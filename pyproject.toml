@@ -1,0 +1,22 @@
+[project]
+name = "taskspec"
+version = "0.0.1.dev0"
+description = "A tasks execution service for Python."
+authors = [
+    {name = "weihong.xu",email = "xuweihong.cn@gmail.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi (>=0.121.2,<0.122.0)",
+    "pydantic (>=2.12.4,<3.0.0)",
+    "fire (>=0.7.1,<0.8.0)",
+    "asyncssh (>=2.21.1,<3.0.0)",
+    "pyyaml (>=6.0.3,<7.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
