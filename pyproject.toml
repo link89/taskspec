@@ -15,7 +15,7 @@ dependencies = [
     "asyncssh (>=2.21.1,<3.0.0)",
     "pyyaml (>=6.0.3,<7.0.0)"
 ]
-
+packages = [{include = "taskspec"}]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
