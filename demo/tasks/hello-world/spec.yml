@@ -1,0 +1,5 @@
+id_type: sha256
+executor: ikkem-hpc
+entrypoint: ./hello-world.sh
+in_files:
+  - ./hello-world.sh
