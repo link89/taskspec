@@ -71,3 +71,7 @@ class SshConnector(Connector):
                 self._conn = None
         except Exception:
             pass
+
+
+class ConnectorConfig(BaseModel):
+    ssh: Optional[SshConfig] = None
