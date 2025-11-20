@@ -1,21 +1,25 @@
 from pydantic import BaseModel
 from typing import Optional
 
+import asyncssh
+from asyncssh import SSHClientConnection
+
 import asyncio.subprocess as sp
 import os
 
+
 class Connector:
-    async def run(self, command: str, cwd: Optional[str] = None):
+    async def shell(self, cmd: str, cwd: Optional[str] = None):
         raise NotImplementedError
 
-    def open(self, path: str):
+    async def open(self, path: str):
         raise NotImplementedError
 
 
 class LocalConnector(Connector):
-    async def run(self, command: str, cwd: Optional[str] = None):
+    async def shell(self, cmd: str, cwd: Optional[str] = None):
         process = await sp.create_subprocess_shell(
-            command,
+            cmd,
             cwd=cwd,
             stdout=sp.PIPE,
             stderr=sp.PIPE
@@ -23,7 +27,7 @@ class LocalConnector(Connector):
         stdout, stderr = await process.communicate()
         return process.returncode, stdout, stderr
 
-    def open(self, path: str):
+    async def open(self, path: str):
         return open(path, 'r')
 
 
@@ -37,9 +41,33 @@ class SshConfig(BaseModel):
 class SshConnector(Connector):
     def __init__(self, config: SshConfig):
         self.config = config
+        self._conn: Optional[SSHClientConnection] = None
 
-    async def run(self, command: str, cwd: Optional[str] = None):
+    async def _get_conn(self):
+        if self._conn is not None:
+            try:
+                await self._conn.run("echo hi")
+            except Exception:
+                self._close()
+        if self._conn is None:
+            self._conn = await asyncssh.connect(
+                self.config.host,
+                port=self.config.port,
+                config=self.config.config_file,
+            )
+        return self._conn
+
+
+    async def shell(self, cmd: str, cwd: Optional[str] = None):
         ...
 
-    def open(self, path: str):
+    async def open(self, path: str):
         ...
+
+    def _close(self):
+        try:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
+        except Exception:
+            pass

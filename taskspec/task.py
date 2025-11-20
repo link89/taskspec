@@ -13,4 +13,3 @@ class TaskSpec(BaseModel):
     description: str
     runtime: RuntimeSpec
 
-
