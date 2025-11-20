@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from .connector import Connector
-from .task import TaskSpec
+from .task import TaskData
 
 
 class SlurmConfig(BaseModel):
@@ -17,14 +17,24 @@ class RunnerConfig(BaseModel):
 
 
 class Runner:
-    def submit(self, task: TaskSpec):
+    async def submit(self, task: TaskData):
+        raise NotImplementedError
+
+    async def query(self, task: TaskData):
         raise NotImplementedError
 
 
 class SlurmRunner(Runner):
-    def __init__(self, config: SlurmConfig):
-        self.config = config
 
-    def submit(self, task: TaskSpec):
+    def __init__(self,
+                 config: SlurmConfig,
+                 connector: Connector):
+        self.config = config
+        self._connector = connector
+        self._squeue_ids = set()
+
+    async def submit(self, task: TaskData):
         ...
 
+    async def query(self, task: TaskData):
+        ...

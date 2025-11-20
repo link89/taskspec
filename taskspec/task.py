@@ -4,7 +4,6 @@ from typing import Literal, List
 
 class TaskSpec(BaseModel):
     name: str
-    id_type: Literal['uuid4']
     executor: str
     entrypoint: str
     in_files: List[str] = []
@@ -22,8 +21,8 @@ class TaskInput(BaseModel):
 
 
 class TaskData(BaseModel):
-    prefix: str
     id: str
+    prefix: str
     spec: TaskSpec
     input: TaskInput
     created_at: int
