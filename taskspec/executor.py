@@ -1,12 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
-import os
 
-
-class SshConfig(BaseModel):
-    host: str
-    port: int = 22
-    config_file: str = os.path.expanduser("~/.ssh/config")
+from .connector import SshConfig, Connector
 
 
 class ExecutorConfig(BaseModel):
@@ -15,5 +10,10 @@ class ExecutorConfig(BaseModel):
 
 
 class ExecutorService:
+    connector: Connector
+
     def __init__(self, config: ExecutorConfig):
         self.config = config
+
+class ExecutorManager:
+    pass
