@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
 
 from .connector import ConnectorConfig, Connector
 from .runner import RunnerConfig, Runner
@@ -32,8 +32,14 @@ class ExecutorService:
         else:
             raise ValueError("No valid runner configuration provided")
 
-    async def submit_task(self, task):
-        ...
 
-    async def query_task(self, task):
-        ...
+class ExecutorServiceManager:
+
+    def __init__(self, configs: list[ExecutorConfig]):
+        self._executors = {
+            config.name: ExecutorService(config)
+            for config in configs
+        }
+
+    def get_executor(self, name: str) -> Optional[ExecutorService]:
+        return self._executors.get(name)
