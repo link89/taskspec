@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, List
+from typing import Optional, List
 
 
 class TaskSpec(BaseModel):
@@ -26,4 +26,5 @@ class TaskData(BaseModel):
     spec: TaskSpec
     input: TaskInput
     created_at: int
+    slurm_job_id: Optional[int] = None
 
