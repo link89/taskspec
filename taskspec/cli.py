@@ -1,5 +1,6 @@
 import os
 import yaml
+import uvicorn
 
 from .config import Config
 
@@ -13,8 +14,10 @@ def start_server(path: str):
 
     from .api import make_fastapi_app
     app = make_fastapi_app(base_url=config.server.base_url)
-    import uvicorn
     uvicorn.run(app, host=config.server.host, port=config.server.port)
 
 
+if __name__ == "__main__":
+    from fire import Fire
+    Fire({"start_server": start_server})
 
