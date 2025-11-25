@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from .connector import ConnectorConfig, Connector
 from .runner import RunnerConfig, Runner
+from .task import TaskInput, TaskData, TaskSpec
 
 
 class ExecutorConfig(BaseModel):
@@ -42,4 +43,7 @@ class ExecutorServiceManager:
         }
 
     def get_executor(self, name: str) -> Optional[ExecutorService]:
-        return self._executors.get(name)
+        if name not in self._executors:
+            raise ValueError(f"Executor not found: {name}")
+        return self._executors[name]
+

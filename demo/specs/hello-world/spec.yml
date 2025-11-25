@@ -1,4 +1,0 @@
-executor: ikkem-hpc
-entrypoint: ./hello-world.sh
-in_files:
-  - ./hello-world.sh
