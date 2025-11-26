@@ -14,7 +14,7 @@ class ExecutorConfig(BaseModel):
 
 class ExecutorService:
     _connector: Connector
-    _runner: Runner
+    runner: Runner
 
     def __init__(self, config: ExecutorConfig):
         self.config = config
@@ -29,7 +29,7 @@ class ExecutorService:
 
         if config.runner.slurm is not None:
             from .runner import SlurmRunner
-            self._runner = SlurmRunner(config.runner.slurm, self._connector)
+            self.runner = SlurmRunner(config.runner.slurm, self._connector)
         else:
             raise ValueError("No valid runner configuration provided")
 
@@ -42,8 +42,9 @@ class ExecutorServiceManager:
             for config in configs
         }
 
-    def get_executor(self, name: str) -> Optional[ExecutorService]:
+    def get_executor(self, name: str) -> ExecutorService:
         if name not in self._executors:
             raise ValueError(f"Executor not found: {name}")
         return self._executors[name]
+
 

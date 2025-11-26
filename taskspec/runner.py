@@ -17,7 +17,7 @@ class RunnerConfig(BaseModel):
 
 
 class Runner:
-    async def submit(self, task: TaskData):
+    async def submit(self, task: TaskData) -> TaskData:
         raise NotImplementedError
 
     async def query(self, task: TaskData):
@@ -32,6 +32,7 @@ class SlurmRunner(Runner):
         self.config = config
         self._connector = connector
         self._squeue_ids = set()
+
 
     async def submit(self, task: TaskData):
         ...
