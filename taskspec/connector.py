@@ -6,11 +6,18 @@ from asyncssh import SSHClientConnection
 from collections import namedtuple
 
 import asyncio.subprocess as sp
+import shutil
 import os
 
 CmdResult = namedtuple("CmdResult", ["returncode", "stdout", "stderr"])
 
 class Connector:
+    async def dump_text(self, text: str, path: str, encoding='utf-8') -> None:
+        raise NotImplementedError
+
+    async def put(self, src: str, dst: str) -> None:
+        raise NotImplementedError
+
     async def shell(self, cmd: str) -> CmdResult:
         raise NotImplementedError
 
@@ -31,6 +38,13 @@ class LocalConnector(Connector):
             stdout=stdout,
             stderr=stderr,
         )
+
+    async def dump_text(self, text: str, path: str, encoding='utf-8'):
+        with open(path, 'w', encoding=encoding) as f:
+            f.write(text)
+
+    async def put(self, src: str, dst: str):
+        shutil.copyfile(src, dst)
 
     async def get_fstream(self, path: str, buffer_size: int = 4096):
         with open(path, 'rb') as f:
@@ -64,6 +78,17 @@ class SshConnector(Connector):
                 config=self.config.config_file,
             )
         return self._conn
+
+    async def dump_text(self, text: str, path: str, encoding='utf-8') -> None:
+        conn = await self._get_conn()
+        async with conn.start_sftp_client() as sftp:
+            async with sftp.open(path, 'w', encoding=encoding) as f:
+                await f.write(text)
+
+    async def put(self, src: str, dst: str) -> None:
+        conn = await self._get_conn()
+        async with conn.start_sftp_client() as sftp:
+            await sftp.put(src, dst)
 
     async def shell(self, cmd: str):
         conn = await self._get_conn()
