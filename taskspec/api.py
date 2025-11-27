@@ -22,7 +22,7 @@ def make_fastapi_app(base_url: str) -> FastAPI:
     router.add_api_route("/specs/{spec_name}/tasks",
                          endpoint=controller.create_task, methods=["POST"])
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}/files/{file_path:path}",
-                         endpoint=controller.get_task_file, methods=["GET"])
+                         endpoint=controller.get_task_files, methods=["GET"])
 
     app = FastAPI(root_path=base_url)
     app.include_router(router)

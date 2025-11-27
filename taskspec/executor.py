@@ -1,10 +1,8 @@
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Optional
 
 from .connector import ConnectorConfig, Connector
 from .runner import RunnerConfig, Runner
-from .task import TaskInput, TaskData, TaskSpec
-
 
 class ExecutorConfig(BaseModel):
     name: str

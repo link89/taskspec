@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from .connector import Connector
-from .task import TaskData
+from .spec import TaskData
 
 
 class SlurmConfig(BaseModel):
@@ -32,7 +32,6 @@ class SlurmRunner(Runner):
         self.config = config
         self._connector = connector
         self._squeue_ids = set()
-
 
     async def submit(self, task: TaskData):
         ...

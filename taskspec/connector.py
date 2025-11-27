@@ -6,6 +6,7 @@ from asyncssh import SSHClientConnection
 from collections import namedtuple
 
 import asyncio.subprocess as sp
+import asyncio
 import shutil
 import os
 
@@ -53,6 +54,7 @@ class LocalConnector(Connector):
                 if not buffer:
                     break
                 yield buffer
+                await asyncio.sleep(0)  # Yield control to the event loop
 
 class SshConfig(BaseModel):
     host: str
