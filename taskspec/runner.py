@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
 
 from .connector import Connector
 from .spec import TaskData
@@ -34,7 +34,7 @@ class SlurmRunner(Runner):
         self._squeue_ids = set()
 
     async def submit(self, task: TaskData):
-        ...
+        return task
 
     async def query(self, task: TaskData):
-        ...
+        pass

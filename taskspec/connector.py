@@ -8,11 +8,15 @@ from collections import namedtuple
 import asyncio.subprocess as sp
 import asyncio
 import shutil
+import shlex
 import os
 
 CmdResult = namedtuple("CmdResult", ["returncode", "stdout", "stderr"])
 
 class Connector:
+    def get_base_dir(self) -> str:
+        raise NotImplementedError
+
     async def dump_text(self, text: str, path: str, encoding='utf-8') -> None:
         raise NotImplementedError
 
@@ -22,11 +26,20 @@ class Connector:
     async def shell(self, cmd: str) -> CmdResult:
         raise NotImplementedError
 
+    async def mkdir(self, path: str, exist_ok: bool=True) -> None:
+        raise NotImplementedError
+
     def get_fstream(self, path: str, buffer_size: int=4096) -> AsyncGenerator[bytes, Any]:
         raise NotImplementedError
 
 
 class LocalConnector(Connector):
+    def __init__(self, base_dir: str) -> None:
+        self._base_dir = base_dir
+
+    async def mkdir(self, path: str, exist_ok: bool=True):
+        os.makedirs(path, exist_ok=exist_ok)
+
     async def shell(self, cmd: str):
         process = await sp.create_subprocess_shell(
             cmd,
@@ -56,6 +69,9 @@ class LocalConnector(Connector):
                 yield buffer
                 await asyncio.sleep(0)  # Yield control to the event loop
 
+    def get_base_dir(self) -> str:
+        return self._base_dir
+
 class SshConfig(BaseModel):
     host: str
     port: int = 22
@@ -67,19 +83,12 @@ class SshConnector(Connector):
         self.config = config
         self._conn: Optional[SSHClientConnection] = None
 
-    async def _get_conn(self):
-        if self._conn is not None:
-            try:
-                await self._conn.run("echo hi")
-            except Exception:
-                self._close()
-        if self._conn is None:
-            self._conn = await asyncssh.connect(
-                self.config.host,
-                port=self.config.port,
-                config=self.config.config_file,
-            )
-        return self._conn
+    def get_base_dir(self):
+        return self.config.base_dir
+
+    async def mkdir(self, path: str, exist_ok: bool=True) -> None:
+        cmd = f'mkdir {"-p" if exist_ok else ""} {shlex.quote(path)}'
+        await self.shell(cmd)
 
     async def dump_text(self, text: str, path: str, encoding='utf-8') -> None:
         conn = await self._get_conn()
@@ -110,6 +119,20 @@ class SshConnector(Connector):
                     if not buffer:
                         break
                     yield buffer
+
+    async def _get_conn(self):
+        if self._conn is not None:
+            try:
+                await self._conn.run("echo hi")
+            except Exception:
+                self._close()
+        if self._conn is None:
+            self._conn = await asyncssh.connect(
+                self.config.host,
+                port=self.config.port,
+                config=self.config.config_file,
+            )
+        return self._conn
 
     def _close(self):
         try:

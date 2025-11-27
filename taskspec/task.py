@@ -26,16 +26,39 @@ class TaskService:
         """
         # TODO
 
-
     async def create_task(self, spec_name: str, task_input: TaskInput) -> TaskData:
         spec = self.get_spec(spec_name)
         executor = self._executor_mgr.get_executor(spec.executor)
+        # TODO: check idempotent_key uniqueness
 
         task_id = str(uuid.uuid4())
+
+        # prepare local task directories
         task_prefix = f'specs/{spec_name}/tasks/{task_id}'
         task_dir = os.path.join(self._base_dir, task_prefix)
         meta_dir = os.path.join(task_dir, '.meta')
         os.makedirs(meta_dir, exist_ok=True)
+
+        # prepare remote executor directories
+        remote_task_dir = os.path.join(executor.connector.get_base_dir(), task_prefix)
+        await executor.connector.mkdir(remote_task_dir, exist_ok=True)
+
+        # copy in_files to executor
+        for in_file in spec.in_files:
+            src_path = in_file.src
+            dst_path = in_file.dst
+            if not dst_path:
+                dst_path = src_path
+            # TODO: render file if in_file.render is True
+            dst_full_path = os.path.join(remote_task_dir, dst_path)
+            await executor.connector.put(src_path, dst_full_path)
+
+        # generate files from TaskInput
+        for file_data in task_input.files:
+            dst_full_path = os.path.join(remote_task_dir, file_data.name)
+            await executor.connector.mkdir(os.path.dirname(dst_full_path), exist_ok=True)
+            await executor.connector.dump_text(file_data.content, dst_full_path)
+            # TODO: render file if needed
 
         task_data = TaskData(
             id=task_id,
@@ -44,7 +67,7 @@ class TaskService:
             input=task_input,
             created_at=int(time.time()),
         )
-        self._update_task(task_data)
+        self._save(task_data)
         await executor.runner.submit(task_data)
         return task_data
 
@@ -73,7 +96,7 @@ class TaskService:
     def _get_spec_dir(self, spec_name: str) -> str:
         return os.path.join(self._base_dir, 'specs', spec_name)
 
-    def _update_task(self, task_data: TaskData):
+    def _save(self, task_data: TaskData):
         task_data_file = os.path.join(self._base_dir, task_data.prefix,
                                       '.meta', 'task_data.json')
         with open(task_data_file, 'w', encoding='utf-8') as f:

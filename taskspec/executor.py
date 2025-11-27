@@ -11,32 +11,32 @@ class ExecutorConfig(BaseModel):
 
 
 class ExecutorService:
-    _connector: Connector
+    connector: Connector
     runner: Runner
 
-    def __init__(self, config: ExecutorConfig):
+    def __init__(self, config: ExecutorConfig, base_dir: str) :
         self.config = config
         if config.connector is None:
             from .connector import LocalConnector
-            self._connector = LocalConnector()
+            self.connector = LocalConnector(base_dir)
         elif config.connector.ssh is not None:
             from .connector import SshConnector
-            self._connector = SshConnector(config.connector.ssh)
+            self.connector = SshConnector(config.connector.ssh)
         else:
             raise ValueError("No valid connector configuration provided")
 
         if config.runner.slurm is not None:
             from .runner import SlurmRunner
-            self.runner = SlurmRunner(config.runner.slurm, self._connector)
+            self.runner = SlurmRunner(config.runner.slurm, self.connector)
         else:
             raise ValueError("No valid runner configuration provided")
 
 
 class ExecutorServiceManager:
 
-    def __init__(self, configs: list[ExecutorConfig]):
+    def __init__(self, configs: list[ExecutorConfig], base_dir: str):
         self._executors = {
-            config.name: ExecutorService(config)
+            config.name: ExecutorService(config, base_dir)
             for config in configs
         }
 

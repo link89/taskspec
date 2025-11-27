@@ -11,6 +11,7 @@ class ServerConfig(BaseModel):
 
 
 class Config(BaseModel):
+    base_dir: str
     executors: List[ExecutorConfig]
     server: ServerConfig = ServerConfig()
 
