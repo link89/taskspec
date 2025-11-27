@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter
+from fastapi.responses import StreamingResponse
 from .spec import  TaskInput
 from .task import TaskService
 
@@ -15,8 +16,10 @@ class Controller:
         task_data = await self._task_service.create_task(spec_name, task_input)
         return task_data
 
-    async def get_task_files(self, spec_name: str, task_id: str, file_path: str):
-        ...
+    async def get_task_file(self, spec_name: str, task_id: str, file_path: str):
+        fstream = self._task_service.get_task_file(spec_name, task_id, file_path)
+        return StreamingResponse(fstream)
+
 
 def make_fastapi_app(base_url: str, task_service: TaskService) -> FastAPI:
     controller = Controller(task_service=task_service)
@@ -26,7 +29,7 @@ def make_fastapi_app(base_url: str, task_service: TaskService) -> FastAPI:
     router.add_api_route("/specs/{spec_name}/tasks",
                          endpoint=controller.create_task, methods=["POST"])
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}/files/{file_path:path}",
-                         endpoint=controller.get_task_files, methods=["GET"])
+                         endpoint=controller.get_task_file, methods=["GET"])
 
     app = FastAPI(root_path=base_url)
     app.include_router(router)

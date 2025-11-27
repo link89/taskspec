@@ -1,11 +1,14 @@
 import os
 import yaml
 import uvicorn
+import logging
 
 from .config import Config
 from .api import make_fastapi_app
 from .task import TaskService
 from .executor import ExecutorServiceManager
+
+logging.basicConfig(level=logging.INFO)
 
 
 def start_server(path: str):
