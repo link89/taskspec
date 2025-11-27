@@ -10,7 +10,7 @@ class Controller:
         self._task_service = task_service
 
     async def get_task(self, spec_name: str, task_id: str):
-        ...
+        return self._task_service.get_task(spec_name, task_id)
 
     async def create_task(self, spec_name: str, task_input: TaskInput):
         task_data = await self._task_service.create_task(spec_name, task_input)
