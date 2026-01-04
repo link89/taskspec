@@ -54,7 +54,6 @@ class TaskService:
                 dst_path = src_path
 
             real_src_path = os.path.join(spec_dir, src_path)
-            # TODO: render file
             real_dst_path = os.path.join(remote_task_dir, dst_path)
             await executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
             await executor.connector.put(real_src_path, real_dst_path)
@@ -64,7 +63,6 @@ class TaskService:
             real_dst_path = os.path.join(remote_task_dir, file_data.name)
             await executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
             await executor.connector.dump_text(file_data.content, real_dst_path)
-            # TODO: render file if needed
 
         task_data = TaskData(
             id=task_id,
@@ -74,7 +72,9 @@ class TaskService:
             created_at=int(time.time()),
         )
         self.save_task(task_data)
+
         await executor.runner.submit(task_data)
+        self.save_task(task_data)
         return task_data
 
     def get_task_file(self, spec_name: str, task_id: str, file_path: str):

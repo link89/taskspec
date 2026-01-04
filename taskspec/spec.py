@@ -1,6 +1,11 @@
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
 
+
+class SlurmJobData(BaseModel):
+    id: str
+
+
 class InFile(BaseModel):
     src: str
     dst: str = ''
@@ -47,5 +52,5 @@ class TaskData(BaseModel):
     spec: TaskSpec
     input: TaskInput
     created_at: int
-    slurm_job_id: Optional[int] = None
+    slurm_job: Optional[SlurmJobData] = None
 
