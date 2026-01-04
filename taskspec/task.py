@@ -54,7 +54,7 @@ class TaskService:
                 dst_path = src_path
 
             real_src_path = os.path.join(spec_dir, src_path)
-            # TODO: render file if in_file.render is True
+            # TODO: render file
             real_dst_path = os.path.join(remote_task_dir, dst_path)
             await executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
             await executor.connector.put(real_src_path, real_dst_path)

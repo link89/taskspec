@@ -4,7 +4,6 @@ from typing import Optional, List
 class InFile(BaseModel):
     src: str
     dst: str = ''
-    render: bool = False
 
 
 class TaskSpec(BaseModel):
