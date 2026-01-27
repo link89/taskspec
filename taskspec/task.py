@@ -22,6 +22,7 @@ class TaskService:
         self._unfinished_tasks = []
         # TODO: load unfinished tasks from disk
 
+
     async def polling_loop(self):
         """
         Periodically poll the status of all running tasks and update their state.
@@ -38,12 +39,13 @@ class TaskService:
 
         # prepare local task directories
         task_prefix = self._get_task_prefix(spec_name, task_id)
-        task_dir = os.path.join(self._base_dir, task_prefix)
-        meta_dir = os.path.join(task_dir, '.meta')
-        os.makedirs(meta_dir, exist_ok=True)
+        local_task_dir = os.path.join(self._base_dir, task_prefix)
+        local_meta_dir = os.path.join(local_task_dir, '.meta')
+        os.makedirs(local_meta_dir, exist_ok=True)
 
         # prepare remote executor directories
-        remote_task_dir = os.path.join(executor.connector.get_base_dir(), task_prefix)
+        remote_base_dir = executor.connector.get_base_dir()
+        remote_task_dir = os.path.join(remote_base_dir, task_prefix)
         await executor.connector.mkdir(remote_task_dir, exist_ok=True)
 
         # copy in_files to executor
@@ -52,7 +54,6 @@ class TaskService:
             dst_path = in_file.dst
             if not dst_path:
                 dst_path = src_path
-
             real_src_path = os.path.join(spec_dir, src_path)
             real_dst_path = os.path.join(remote_task_dir, dst_path)
             await executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
@@ -78,17 +79,17 @@ class TaskService:
         return task_data
 
     def get_task_file(self, spec_name: str, task_id: str, file_path: str):
-        # normalize file_path
-        file_path = os.path.normpath(file_path)
-        if file_path.startswith('..'):
-            raise ValueError("file_path cannot navigate outside the task directory")
-
         task_data = self.get_task(spec_name, task_id)
         executor = self._executor_mgr.get_executor(task_data.spec.executor)
-        remote_task_dir = os.path.join(executor.connector.get_base_dir(), task_data.prefix)
-        full_file_path = os.path.join(remote_task_dir, file_path)
-        # TODO: ensure file not outside task directory
-        return executor.connector.get_fstream(full_file_path)
+
+        file_path = os.path.normpath(file_path)
+        remote_base_dir = executor.connector.get_base_dir()
+        remote_task_dir = os.path.join(remote_base_dir, task_data.prefix)
+        remote_file_path = os.path.normpath(os.path.join(remote_task_dir, file_path))
+        if not remote_file_path.startswith(remote_task_dir):
+            raise ValueError(f"Illegal file path: {file_path}")
+
+        return executor.connector.get_fstream(remote_file_path)
 
     def get_spec(self, spec_name: str) -> TaskSpec:
         spec_dir = self._get_spec_dir(spec_name)

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Optional
 
 from .connector import Connector
 from .spec import TaskData, SlurmJobData
@@ -18,8 +18,15 @@ from .connector import Connector
 logger = getLogger(__name__)
 
 
+class SlurmConfig(BaseModel):
+    sbatch: str = "sbatch"
+    squeue: str = "squeue"
+    scancel: str = "scancel"
+    scontrol: str = "scontrol"
+
+
 class RunnerConfig(BaseModel):
-    slurm: Optional['SlurmConfig'] = None
+    slurm: Optional[SlurmConfig] = None
 
 
 class Runner:
@@ -28,14 +35,6 @@ class Runner:
 
     async def query(self, task: TaskData):
         raise NotImplementedError
-
-
-
-class SlurmConfig(BaseModel):
-    sbatch: str = "sbatch"
-    squeue: str = "squeue"
-    scancel: str = "scancel"
-    scontrol: str = "scontrol"
 
 
 class SlurmRunner(Runner):
@@ -49,17 +48,16 @@ class SlurmRunner(Runner):
 
     async def submit(self, task: TaskData):
         base_dir = self._connector.get_base_dir()
-        cwd = os.path.join(base_dir, task.prefix)
+        task_dir = os.path.join(base_dir, task.prefix)
         entrypoint = task.spec.entrypoint
-        script_path = os.path.join(cwd, entrypoint)
 
         # Verify entrypoint exists
-        result = await self._connector.shell(f'test -f {quote(script_path)}')
+        result = await self._connector.shell(f'cd {task_dir} && test -f {quote(entrypoint)}')
         if result.returncode != 0:
-            raise FileNotFoundError(f"Entrypoint file not found: {script_path}")
+            raise FileNotFoundError(f"Not a file: {entrypoint}")
 
         # Submit job
-        cmd = f"cd {cwd} && {self.config.sbatch} {entrypoint}"
+        cmd = f"cd {task_dir} && {self.config.sbatch} {quote(entrypoint)}"
         result = await self._connector.shell(cmd)
         if result.returncode != 0:
             raise ValueError(f"Failed to submit job: {result.stderr}")
