@@ -1,5 +1,6 @@
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
+from enum import IntEnum
 
 
 class SlurmJobData(BaseModel):
@@ -42,6 +43,15 @@ class FileData(BaseModel):
     content: str
 
 
+class TaskState(IntEnum):
+    DRAFT = 0
+    SUBMITTED = 1
+    SUCCEEDED = 2
+    FAILED = 3
+    CANCELLED = 4
+    ERROR = 5
+
+
 class TaskInput(BaseModel):
     idempotent_key: str = ''
     params: dict = {}
@@ -54,6 +64,7 @@ class TaskData(BaseModel):
     prefix: str
     spec: TaskSpec
     input: TaskInput
+    state: TaskState = TaskState.DRAFT
     created_at: int
     slurm_job: Optional[SlurmJobData] = None
 

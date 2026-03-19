@@ -14,6 +14,8 @@ import re
 import os
 
 from .connector import Connector
+from .schema import TaskState
+
 
 logger = getLogger(__name__)
 
@@ -22,7 +24,6 @@ class SlurmConfig(BaseModel):
     sbatch: str = "sbatch"
     squeue: str = "squeue"
     scancel: str = "scancel"
-    scontrol: str = "scontrol"
 
 
 class RunnerConfig(BaseModel):

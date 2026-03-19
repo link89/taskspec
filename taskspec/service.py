@@ -7,7 +7,7 @@ import os
 import uuid
 
 from .executor import ExecutorServiceManager
-from .schema import TaskSpec, TaskInput, TaskData
+from .schema import TaskSpec, TaskInput, TaskData, TaskState
 
 logger = getLogger(__name__)
 
@@ -19,13 +19,6 @@ class TaskService:
         self._executor_mgr = executor_mgr
         self._unfinished_tasks = []
         # TODO: load unfinished tasks from disk
-
-
-    async def polling_loop(self):
-        """
-        Periodically poll the status of all running tasks and update their state.
-        """
-        # TODO
 
     async def create_task(self, spec_name: str, task_input: TaskInput) -> TaskData:
         spec = self.get_spec(spec_name)
@@ -66,14 +59,20 @@ class TaskService:
         task_data = TaskData(
             id=task_id,
             prefix=task_prefix,
+            state=TaskState.DRAFT,
             spec=spec,
             input=task_input,
             created_at=int(time.time()),
         )
-        self.save_task(task_data)
+        self._save_task(task_data)
         if task_input.auto_submit:
-            task_data = await executor.runner.submit(task_data)
-            self.save_task(task_data)
+            try:
+                task_data = await executor.runner.submit(task_data)
+            except:
+                task_data.state = TaskState.ERROR
+                raise
+            finally:
+                self._save_task(task_data)
         return task_data
 
     def get_task_file(self, spec_name: str, task_id: str, file_path: str):
@@ -82,27 +81,23 @@ class TaskService:
 
         file_path = os.path.normpath(file_path)
         remote_base_dir = executor.connector.get_base_dir()
+        remote_base_dir = os.path.normpath(remote_base_dir)
         remote_task_dir = os.path.join(remote_base_dir, task_data.prefix)
         remote_file_path = os.path.normpath(os.path.join(remote_task_dir, file_path))
+        # not allow to access files outside of task dir
         if not remote_file_path.startswith(remote_task_dir):
             raise ValueError(f"Illegal file path: {file_path}")
-
         return executor.connector.get_fstream(remote_file_path)
 
     def get_spec(self, spec_name: str) -> TaskSpec:
         spec_dir = self._get_spec_dir(spec_name)
         spec_file = os.path.join(spec_dir, 'config.yml')
         if not os.path.exists(spec_file):
-            raise FileNotFoundError(f"Spec file not found: {spec_file}")
+            raise ValueError(f"config file of spec not found: {spec_name}")
         with open(spec_file, 'r') as f:
             spec_dict = yaml.safe_load(f)
         return TaskSpec(**spec_dict)
 
-    def _get_spec_dir(self, spec_name: str) -> str:
-        return os.path.join(self._base_dir, 'specs', spec_name)
-
-    def _get_task_prefix(self, spec_name: str, task_id: str):
-        return f'specs/{spec_name}/tasks/{task_id}'
 
     def get_task(self, spec_name: str, task_id: str) -> TaskData:
         task_prefix = self._get_task_prefix(spec_name, task_id)
@@ -114,8 +109,14 @@ class TaskService:
             task_data = json.load(f)
         return TaskData(**task_data)
 
-    def save_task(self, task_data: TaskData):
+    def _save_task(self, task_data: TaskData):
         task_data_file = os.path.join(self._base_dir, task_data.prefix,
                                       '.meta', 'task_data.json')
         with open(task_data_file, 'w', encoding='utf-8') as f:
             json.dump(task_data.model_dump(), f)
+
+    def _get_spec_dir(self, spec_name: str) -> str:
+        return os.path.join(self._base_dir, 'specs', spec_name)
+
+    def _get_task_prefix(self, spec_name: str, task_id: str):
+        return f'specs/{spec_name}/tasks/{task_id}'
