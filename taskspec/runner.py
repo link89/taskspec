@@ -41,10 +41,14 @@ class SlurmRunner(Runner):
 
     def __init__(self,
                  config: SlurmConfig,
-                 connector: Connector):
+                 connector: Connector,
+                 query_interval_s = 5):
+
         self.config = config
         self._connector = connector
         self._squeue_ids = set()
+        self._query_interval_s = query_interval_s
+        self._last_update_ts = 0
 
     async def submit(self, task: TaskData):
         base_dir = self._connector.get_base_dir()
@@ -64,46 +68,17 @@ class SlurmRunner(Runner):
 
         job_id = self._parse_job_id(result.stdout)
         if not job_id:
-            raise ValueError(f"Failed to parse job id from: {result.stdout}, err: {result.stderr}")
+            raise ValueError(f"Failed to parse job id: {result.stdout}, err: {result.stderr}")
 
         logger.info(f'Job submitted: {job_id}')
-        job_data = SlurmJobData(id=job_id)
-        task.slurm_job = job_data
-        return task
+        job_data = SlurmJobData(id=job_id, state='PENDING')
+        return task.model_copy(update={'slurm_job': job_data})
 
     async def query(self, task: TaskData):
         if not task.slurm_job:
-            return None
+            raise ValueError("Task has no associated Slurm job")
         job_id = task.slurm_job.id
 
-        # query jobs
-        cmd = f'{self.config.squeue} -o "%i|%t|%r|%N" -j {job_id}'
-        result = await self._connector.shell(cmd)
-        if result.returncode != 0:
-            if 'Invalid job id specified' in result.stderr:
-                return None
-            logger.error(f"Unexpected squeue error: {result.stderr}")
-            return {'id': job_id, 'nodes': []}
-
-        # query nodes
-        nodes = []
-        jobs = parse_csv(result.stdout, delimiter="|")
-        if not jobs:
-            logger.error(f"No job found for id: {job_id}")
-            return None
-
-        job = jobs[0]
-        state = job.get('ST', '').strip()
-        if state == 'R':
-            nodelist = job.get('NODELIST', '').strip()
-            result = await self._connector.shell(f'{self.config.scontrol} show hostname {nodelist}')
-            if result.returncode == 0:
-                nodes = result.stdout.strip().splitlines()
-                logger.info(f"Job {job_id} is running on nodes: {nodes}")
-            else:
-                logger.error(f"Failed to parse nodelist: {result.stderr}")
-
-        return { 'id': job_id, 'state': state, 'nodes': nodes }
 
     def _parse_job_id(self, stdout: str):
         m = re.search(r'\d+', stdout)

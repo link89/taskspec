@@ -4,6 +4,7 @@ from typing import Optional, List
 
 class SlurmJobData(BaseModel):
     id: str
+    state: str
 
 
 class InFile(BaseModel):
@@ -44,6 +45,7 @@ class TaskInput(BaseModel):
     idempotent_key: str = ''
     params: dict = {}
     files: List[FileData] = []
+    auto_submit: bool = True
 
 
 class TaskData(BaseModel):

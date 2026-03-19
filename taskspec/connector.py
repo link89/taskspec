@@ -35,7 +35,7 @@ class Connector:
 
 class LocalConnector(Connector):
     def __init__(self, base_dir: str) -> None:
-        self._base_dir = base_dir
+        self._base_dir = os.path.normpath(base_dir)
 
     async def mkdir(self, path: str, exist_ok: bool=True):
         os.makedirs(path, exist_ok=exist_ok)
@@ -67,6 +67,7 @@ class LocalConnector(Connector):
                 if not buffer:
                     break
                 yield buffer
+                # FIXME: do I need this?
                 await asyncio.sleep(0)  # Yield control to the event loop
 
     def get_base_dir(self) -> str:
@@ -84,7 +85,7 @@ class SshConnector(Connector):
         self._conn: Optional[SSHClientConnection] = None
 
     def get_base_dir(self):
-        return self.config.base_dir
+        return  os.path.normpath(self.config.base_dir)
 
     async def mkdir(self, path: str, exist_ok: bool=True) -> None:
         cmd = f'mkdir {"-p" if exist_ok else ""} {shlex.quote(path)}'

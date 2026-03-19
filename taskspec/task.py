@@ -73,9 +73,9 @@ class TaskService:
             created_at=int(time.time()),
         )
         self.save_task(task_data)
-
-        await executor.runner.submit(task_data)
-        self.save_task(task_data)
+        if task_input.auto_submit:
+            task_data = await executor.runner.submit(task_data)
+            self.save_task(task_data)
         return task_data
 
     def get_task_file(self, spec_name: str, task_id: str, file_path: str):
@@ -113,14 +113,11 @@ class TaskService:
         if not os.path.exists(task_data_file):
             raise FileNotFoundError(f"Task data file not found: {task_data_file}")
         with open(task_data_file, 'r', encoding='utf-8') as f:
-            task_data_dict = json.load(f)
-        return TaskData(**task_data_dict)
-
+            task_data = json.load(f)
+        return TaskData(**task_data)
 
     def save_task(self, task_data: TaskData):
         task_data_file = os.path.join(self._base_dir, task_data.prefix,
                                       '.meta', 'task_data.json')
         with open(task_data_file, 'w', encoding='utf-8') as f:
             json.dump(task_data.model_dump(), f)
-
-
