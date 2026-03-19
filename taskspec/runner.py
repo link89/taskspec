@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from .connector import Connector
-from .spec import TaskData, SlurmJobData
+from .schema import TaskData, SlurmJobData
 
 from pydantic import BaseModel
 

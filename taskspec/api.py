@@ -1,7 +1,7 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.responses import StreamingResponse
-from .spec import  TaskInput
-from .task import TaskService
+from .schema import  TaskInput
+from .service import TaskService
 
 
 class Controller:

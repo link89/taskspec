@@ -1,5 +1,3 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from logging import getLogger
 import json
 import time
@@ -9,7 +7,7 @@ import os
 import uuid
 
 from .executor import ExecutorServiceManager
-from .spec import TaskSpec, TaskInput, TaskData
+from .schema import TaskSpec, TaskInput, TaskData
 
 logger = getLogger(__name__)
 

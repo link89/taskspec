@@ -5,7 +5,7 @@ import logging
 
 from .config import Config
 from .api import make_fastapi_app
-from .task import TaskService
+from .service import TaskService
 from .executor import ExecutorServiceManager
 
 logging.basicConfig(level=logging.INFO)
