@@ -1,8 +1,8 @@
 executors:
-  - name: ikkem-hpc
+  - name: demo-hpc
     connector:
       ssh:
-        host: ikkem-hpc
+        host: demo-hpc
         base_dir: ./tmp/taskspec-demo
     runner:
       slurm: {}

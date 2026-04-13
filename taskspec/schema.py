@@ -16,26 +16,29 @@ class InFile(BaseModel):
 class TaskSpec(BaseModel):
     executor: str
     entrypoint: str
-    in_files: List[InFile] = []
+    files: List[InFile] = []
+    """
+    files will be used by each task created from this spec.
+    """
 
-    @field_validator('in_files', mode='before')
+    @field_validator('files', mode='before')
     @classmethod
     def process_in_files(cls, v):
         if isinstance(v, str):
             v = [v]
         if not isinstance(v, list):
-            raise ValueError("in_files must be string or list of strings/InFile")
-        in_files = []
+            raise ValueError("files must be string or list of strings/InFile")
+        files = []
         for item in v:
             if isinstance(item, str):
                 if ':' in item:
                     src, dst = item.split(':', 1)
-                    in_files.append(InFile(src=src, dst=dst))
+                    files.append(InFile(src=src, dst=dst))
                 else:
-                    in_files.append(InFile(src=item))
+                    files.append(InFile(src=item))
             else:
-                in_files.append(InFile.model_validate(item))
-        return in_files
+                files.append(InFile.model_validate(item))
+        return files
 
 
 class FileData(BaseModel):
@@ -44,19 +47,18 @@ class FileData(BaseModel):
 
 
 class TaskState(IntEnum):
-    DRAFT = 0
+    IDLE = 0
     SUBMITTED = 1
     SUCCEEDED = 2
     FAILED = 3
-    CANCELLED = 4
-    ERROR = 5
+    ERROR = 4  # internal error, e.g. failed to submit
 
 
 class TaskInput(BaseModel):
     idempotent_key: str = ''
     params: dict = {}
     files: List[FileData] = []
-    auto_submit: bool = True
+    submit: bool = True
 
 
 class TaskData(BaseModel):
@@ -64,7 +66,8 @@ class TaskData(BaseModel):
     prefix: str
     spec: TaskSpec
     input: TaskInput
-    state: TaskState = TaskState.DRAFT
+    state: TaskState = TaskState.IDLE
     created_at: int
     slurm_job: Optional[SlurmJobData] = None
+    state_file = '.STATE'
 

@@ -1,4 +1,4 @@
-executor: ikkem-hpc
+executor: demo-hpc
 entrypoint: ./hello-world.sh
-in_files:
+files:
   - ./hello-world.sh

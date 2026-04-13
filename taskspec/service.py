@@ -39,10 +39,10 @@ class TaskService:
         remote_task_dir = os.path.join(remote_base_dir, task_prefix)
         await executor.connector.mkdir(remote_task_dir, exist_ok=True)
 
-        # copy in_files to executor
-        for in_file in spec.in_files:
-            src_path = in_file.src
-            dst_path = in_file.dst
+        # copy files to executor
+        for file in spec.files:
+            src_path = file.src
+            dst_path = file.dst
             if not dst_path:
                 dst_path = src_path
             real_src_path = os.path.join(spec_dir, src_path)
@@ -59,13 +59,14 @@ class TaskService:
         task_data = TaskData(
             id=task_id,
             prefix=task_prefix,
-            state=TaskState.DRAFT,
+            state=TaskState.IDLE,
             spec=spec,
             input=task_input,
             created_at=int(time.time()),
         )
+
         self._save_task(task_data)
-        if task_input.auto_submit:
+        if task_input.submit:
             try:
                 task_data = await executor.runner.submit(task_data)
             except:
@@ -97,7 +98,6 @@ class TaskService:
         with open(spec_file, 'r') as f:
             spec_dict = yaml.safe_load(f)
         return TaskSpec(**spec_dict)
-
 
     def get_task(self, spec_name: str, task_id: str) -> TaskData:
         task_prefix = self._get_task_prefix(spec_name, task_id)
