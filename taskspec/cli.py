@@ -5,7 +5,7 @@ import logging
 
 from .config import Config
 from .api import make_fastapi_app
-from .service import TaskService
+from .service import RootService
 from .executor import ExecutorServiceManager
 
 logging.basicConfig(level=logging.INFO)
@@ -18,12 +18,12 @@ def start_server(path: str):
     with open(config_file, 'r') as f:
         config = Config(**yaml.safe_load(f), base_dir=path)
     executor_manager = ExecutorServiceManager(config.executors, config.base_dir)
-    task_service = TaskService(config.base_dir, executor_manager)
-    app = make_fastapi_app(base_url=config.server.base_url, task_service=task_service)
+    root_service = RootService(config.base_dir, executor_manager)
+    root_service.init()
+    app = make_fastapi_app(base_url=config.server.base_url, root_service=root_service)
     uvicorn.run(app, host=config.server.host, port=config.server.port)
 
 
 if __name__ == "__main__":
     from fire import Fire
     Fire({"start_server": start_server})
-

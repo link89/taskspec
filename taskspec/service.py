@@ -3,58 +3,54 @@ import json
 import time
 import yaml
 import os
-
 import uuid
+import glob
+from typing import Dict, Any, AsyncGenerator
 
-from .executor import ExecutorServiceManager
+from .executor import ExecutorServiceManager, ExecutorService
 from .schema import TaskSpec, TaskInput, TaskData, TaskState
 
 logger = getLogger(__name__)
 
-class TaskService:
+class SpecService:
+    def __init__(self, name: str, dir: str, spec: TaskSpec, executor: ExecutorService):
+        self.name = name
+        self.dir = dir
+        self._spec = spec
+        self._executor = executor
+        self._unfinished_tasks: Dict[str, TaskData] = {}
 
-    def __init__(self, base_dir: str,
-                 executor_mgr: ExecutorServiceManager):
-        self._base_dir = base_dir
-        self._executor_mgr = executor_mgr
-        self._unfinished_tasks = []
-        # TODO: load unfinished tasks from disk
+    def init(self) -> None:
+        self._load_unfinished_tasks()
 
-    async def create_task(self, spec_name: str, task_input: TaskInput) -> TaskData:
-        spec = self.get_spec(spec_name)
-        executor = self._executor_mgr.get_executor(spec.executor)
-        spec_dir = self._get_spec_dir(spec_name)
-        # TODO: check idempotent_key uniqueness
-
+    async def create_task(self, task_input: TaskInput) -> TaskData:
         task_id = str(uuid.uuid4())
+        task_dir = self._get_task_dir(task_id)
 
         # prepare local task directories
-        task_prefix = f'specs/{spec_name}/tasks/{task_id}'
-        local_task_dir = os.path.join(self._base_dir, task_prefix)
-        local_meta_dir = os.path.join(local_task_dir, '.meta')
+        local_meta_dir = os.path.join(task_dir, '.meta')
         os.makedirs(local_meta_dir, exist_ok=True)
 
         # prepare remote executor directories
-        remote_base_dir = executor.connector.get_base_dir()
+        remote_base_dir = self._executor.connector.get_base_dir()
+        task_prefix = f'specs/{self.name}/tasks/{task_id}'
         remote_task_dir = os.path.join(remote_base_dir, task_prefix)
-        await executor.connector.mkdir(remote_task_dir, exist_ok=True)
+        await self._executor.connector.mkdir(remote_task_dir, exist_ok=True)
 
         # copy files to executor
-        for file in spec.files:
+        for file in self._spec.files:
             src_path = file.src
-            dst_path = file.dst
-            if not dst_path:
-                dst_path = src_path
-            real_src_path = os.path.join(spec_dir, src_path)
+            dst_path = file.dst or src_path
+            real_src_path = os.path.join(self.dir, src_path)
             real_dst_path = os.path.join(remote_task_dir, dst_path)
-            await executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
-            await executor.connector.put(real_src_path, real_dst_path)
+            await self._executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
+            await self._executor.connector.put(real_src_path, real_dst_path)
 
         # generate files from TaskInput
         for file_data in task_input.files:
             real_dst_path = os.path.join(remote_task_dir, file_data.name)
-            await executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
-            await executor.connector.dump_text(file_data.content, real_dst_path)
+            await self._executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
+            await self._executor.connector.dump_text(file_data.content, real_dst_path)
 
         task_data = TaskData(
             id=task_id,
@@ -63,60 +59,94 @@ class TaskService:
             created_at=int(time.time()),
         )
 
-        self._save_task(spec, task_data)
+        self._save_task(task_data)
         if task_input.submit:
             try:
-                task_data = await executor.runner.submit(spec, task_data)
-            except:
+                task_data = await self._executor.runner.submit(self._spec, task_data)
+                if task_data.state not in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
+                    self._unfinished_tasks[task_id] = task_data
+            except Exception:
                 task_data.state = TaskState.ERROR
                 raise
             finally:
-                self._save_task(spec, task_data)
+                self._save_task(task_data)
         return task_data
 
-    def get_task_file(self, spec_name: str, task_id: str, file_path: str):
-        spec = self.get_spec(spec_name)
-        task_data = self.get_task(spec_name, task_id)
-        executor = self._executor_mgr.get_executor(spec.executor)
+    def get_task(self, task_id: str) -> TaskData:
+        if task_id in self._unfinished_tasks:
+            return self._unfinished_tasks[task_id]
 
-        file_path = os.path.normpath(file_path)
-        remote_base_dir = executor.connector.get_base_dir()
-        remote_base_dir = os.path.normpath(remote_base_dir)
-        remote_task_dir = os.path.join(remote_base_dir, task_data.get_prefix(spec))
-        remote_file_path = os.path.normpath(os.path.join(remote_task_dir, file_path))
-        # not allow to access files outside of task dir
-        if not remote_file_path.startswith(remote_task_dir):
-            raise ValueError(f"Illegal file path: {file_path}")
-        return executor.connector.get_fstream(remote_file_path)
-
-    def get_spec(self, spec_name: str) -> TaskSpec:
-        spec_dir = self._get_spec_dir(spec_name)
-        spec_file = os.path.join(spec_dir, 'config.yml')
-        if not os.path.exists(spec_file):
-            raise ValueError(f"config file of spec not found: {spec_name}")
-        with open(spec_file, 'r') as f:
-            spec_dict = yaml.safe_load(f)
-        spec = TaskSpec(**spec_dict, name=spec_name)
-        return spec
-
-    def get_task(self, spec_name: str, task_id: str) -> TaskData:
-        task_prefix = self._get_task_prefix(spec_name, task_id)
-        task_data_file = os.path.join(self._base_dir, task_prefix,
-                                      '.meta', 'task_data.json')
+        task_dir = self._get_task_dir(task_id)
+        task_data_file = os.path.join(task_dir, '.meta', 'task_data.json')
         if not os.path.exists(task_data_file):
             raise FileNotFoundError(f"Task data file not found: {task_data_file}")
         with open(task_data_file, 'r', encoding='utf-8') as f:
             task_data = json.load(f)
         return TaskData(**task_data)
 
-    def _save_task(self, spec: TaskSpec, task_data: TaskData):
-        task_data_file = os.path.join(self._base_dir, task_data.get_prefix(spec),
-                                      '.meta', 'task_data.json')
+    def get_task_file(self, task_id: str, file_path: str) -> AsyncGenerator[bytes, Any]:
+        task_data = self.get_task(task_id)
+        file_path = os.path.normpath(file_path)
+        remote_base_dir = self._executor.connector.get_base_dir()
+        remote_task_dir = os.path.join(remote_base_dir, task_data.get_prefix(self._spec))
+        remote_file_path = os.path.normpath(os.path.join(remote_task_dir, file_path))
+
+        if not remote_file_path.startswith(os.path.normpath(remote_task_dir)):
+            raise ValueError(f"Illegal file path: {file_path}")
+        return self._executor.connector.get_fstream(remote_file_path)
+
+    def _save_task(self, task_data: TaskData) -> None:
+        task_dir = self._get_task_dir(task_data.id)
+        task_data_file = os.path.join(task_dir, '.meta', 'task_data.json')
+        os.makedirs(os.path.dirname(task_data_file), exist_ok=True)
         with open(task_data_file, 'w', encoding='utf-8') as f:
             json.dump(task_data.model_dump(), f)
 
-    def _get_spec_dir(self, spec_name: str) -> str:
-        return os.path.join(self._base_dir, 'specs', spec_name)
+    def _load_unfinished_tasks(self) -> None:
+        tasks_dir = os.path.join(self.dir, 'tasks')
+        if not os.path.exists(tasks_dir):
+            return
+        for task_id in os.listdir(tasks_dir):
+            try:
+                task_data = self.get_task(task_id)
+                if task_data.state not in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
+                    self._unfinished_tasks[task_id] = task_data
+            except Exception as e:
+                logger.warning(f"Failed to load task {task_id}: {e}")
 
-    def _get_task_prefix(self, spec_name: str, task_id: str):
-        return f'specs/{spec_name}/tasks/{task_id}'
+    def _get_task_dir(self, task_id: str) -> str:
+        return os.path.join(self.dir, 'tasks', task_id)
+
+class RootService:
+    def __init__(self, base_dir: str, executor_mgr: ExecutorServiceManager):
+        self._base_dir = base_dir
+        self._executor_mgr = executor_mgr
+        self._spec_services: Dict[str, SpecService] = {}
+
+    def init(self) -> None:
+        specs_pattern = os.path.join(self._base_dir, 'specs', '*', 'config.yml')
+        for config_path in glob.glob(specs_pattern):
+            spec_dir = os.path.dirname(config_path)
+            spec_name = os.path.basename(spec_dir)
+
+            with open(config_path, 'r') as f:
+                spec_dict = yaml.safe_load(f)
+
+            # Instantiate TaskSpec in RootService
+            spec = TaskSpec(**spec_dict)
+            spec.name = spec_name
+
+            if not spec.executor:
+                logger.warning(f"Spec {spec_name} has no executor defined, skipping")
+                continue
+
+            executor = self._executor_mgr.get_executor(spec.executor)
+            spec_service = SpecService(spec_name, spec_dir, spec, executor)
+            spec_service.init()
+            self._spec_services[spec_name] = spec_service
+            logger.info(f"Loaded spec service: {spec_name}")
+
+    def get_spec_service(self, spec_name: str) -> SpecService:
+        if spec_name not in self._spec_services:
+            raise ValueError(f"Spec service not found: {spec_name}")
+        return self._spec_services[spec_name]
