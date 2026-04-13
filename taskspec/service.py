@@ -29,7 +29,7 @@ class TaskService:
         task_id = str(uuid.uuid4())
 
         # prepare local task directories
-        task_prefix = self._get_task_prefix(spec_name, task_id)
+        task_prefix = f'specs/{spec_name}/tasks/{task_id}'
         local_task_dir = os.path.join(self._base_dir, task_prefix)
         local_meta_dir = os.path.join(local_task_dir, '.meta')
         os.makedirs(local_meta_dir, exist_ok=True)
@@ -58,32 +58,31 @@ class TaskService:
 
         task_data = TaskData(
             id=task_id,
-            prefix=task_prefix,
             state=TaskState.IDLE,
-            spec=spec,
             input=task_input,
             created_at=int(time.time()),
         )
 
-        self._save_task(task_data)
+        self._save_task(spec, task_data)
         if task_input.submit:
             try:
-                task_data = await executor.runner.submit(task_data)
+                task_data = await executor.runner.submit(spec, task_data)
             except:
                 task_data.state = TaskState.ERROR
                 raise
             finally:
-                self._save_task(task_data)
+                self._save_task(spec, task_data)
         return task_data
 
     def get_task_file(self, spec_name: str, task_id: str, file_path: str):
+        spec = self.get_spec(spec_name)
         task_data = self.get_task(spec_name, task_id)
-        executor = self._executor_mgr.get_executor(task_data.spec.executor)
+        executor = self._executor_mgr.get_executor(spec.executor)
 
         file_path = os.path.normpath(file_path)
         remote_base_dir = executor.connector.get_base_dir()
         remote_base_dir = os.path.normpath(remote_base_dir)
-        remote_task_dir = os.path.join(remote_base_dir, task_data.prefix)
+        remote_task_dir = os.path.join(remote_base_dir, task_data.get_prefix(spec))
         remote_file_path = os.path.normpath(os.path.join(remote_task_dir, file_path))
         # not allow to access files outside of task dir
         if not remote_file_path.startswith(remote_task_dir):
@@ -97,7 +96,8 @@ class TaskService:
             raise ValueError(f"config file of spec not found: {spec_name}")
         with open(spec_file, 'r') as f:
             spec_dict = yaml.safe_load(f)
-        return TaskSpec(**spec_dict)
+        spec = TaskSpec(**spec_dict, name=spec_name)
+        return spec
 
     def get_task(self, spec_name: str, task_id: str) -> TaskData:
         task_prefix = self._get_task_prefix(spec_name, task_id)
@@ -109,8 +109,8 @@ class TaskService:
             task_data = json.load(f)
         return TaskData(**task_data)
 
-    def _save_task(self, task_data: TaskData):
-        task_data_file = os.path.join(self._base_dir, task_data.prefix,
+    def _save_task(self, spec: TaskSpec, task_data: TaskData):
+        task_data_file = os.path.join(self._base_dir, task_data.get_prefix(spec),
                                       '.meta', 'task_data.json')
         with open(task_data_file, 'w', encoding='utf-8') as f:
             json.dump(task_data.model_dump(), f)

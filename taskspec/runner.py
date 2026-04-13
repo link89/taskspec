@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from .connector import Connector
-from .schema import TaskData, SlurmJobData
+from .schema import TaskData, SlurmJobData, TaskSpec
 
 from pydantic import BaseModel
 
@@ -31,10 +31,10 @@ class RunnerConfig(BaseModel):
 
 
 class Runner:
-    async def submit(self, task: TaskData) -> TaskData:
+    async def submit(self, spec: TaskSpec, task: TaskData) -> TaskData:
         raise NotImplementedError
 
-    async def query(self, task: TaskData):
+    async def query(self, spec: TaskSpec, task: TaskData):
         raise NotImplementedError
 
 
@@ -51,10 +51,10 @@ class SlurmRunner(Runner):
         self._query_interval_s = query_interval_s
         self._last_update_ts = 0
 
-    async def submit(self, task: TaskData):
+    async def submit(self, spec: TaskSpec, task: TaskData):
         base_dir = self._connector.get_base_dir()
-        task_dir = os.path.join(base_dir, task.prefix)
-        entrypoint = task.spec.entrypoint
+        task_dir = os.path.join(base_dir, task.get_prefix(spec))
+        entrypoint = spec.entrypoint
 
         # Verify entrypoint exists
         result = await self._connector.shell(f'cd {task_dir} && test -f {quote(entrypoint)}')

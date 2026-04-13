@@ -14,6 +14,7 @@ class InFile(BaseModel):
 
 
 class TaskSpec(BaseModel):
+    name: str = ""
     executor: str
     entrypoint: str
     files: List[InFile] = []
@@ -63,10 +64,11 @@ class TaskInput(BaseModel):
 
 class TaskData(BaseModel):
     id: str
-    prefix: str
-    spec: TaskSpec
     input: TaskInput
     state: TaskState = TaskState.IDLE
     created_at: int
     slurm_job: Optional[SlurmJobData] = None
     state_file: str = '.STATE'
+
+    def get_prefix(self, spec: 'TaskSpec') -> str:
+        return f'specs/{spec.name}/tasks/{self.id}'
