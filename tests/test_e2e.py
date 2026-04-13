@@ -57,10 +57,13 @@ class TestTaskSpecE2E(unittest.TestCase):
     def test_hello_world_submission_and_file_retrieval(self):
         spec_name = "hello-world"
 
-        # 1. Submit a task
+        # 1. Submit a task with additional files
         payload = {
             "submit": True,
-            "params": {"test": "data"}
+            "params": {"test": "data"},
+            "files": [
+                {"name": "input_file.txt", "content": "this is input file content"}
+            ]
         }
         resp = self.session.post(f"{self.server_url}/specs/{spec_name}/tasks", json=payload)
         self.assertEqual(resp.status_code, 200, f"Failed to submit task: {resp.text}")
@@ -76,8 +79,14 @@ class TestTaskSpecE2E(unittest.TestCase):
         resp = self.session.get(f"{self.server_url}/specs/{spec_name}/tasks/{task_id}")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["id"], task_id)
+        
+        # 3. Verify input file existence immediately (should be uploaded before submission)
+        resp = self.session.get(f"{self.server_url}/specs/{spec_name}/tasks/{task_id}/files/input_file.txt")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text, "this is input file content")
+        print("[Test] Verified input_file.txt content.")
 
-        # 3. Wait for and verify output.txt
+        # 4. Wait for and verify output.txt
         max_wait = 45
         start_time = time.time()
         file_found = False
