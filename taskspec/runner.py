@@ -79,6 +79,8 @@ class SlurmRunner(Runner):
         if not task.slurm_job:
             raise ValueError("Task has no associated Slurm job")
         job_id = task.slurm_job.id
+        # TODO: query squeue for the state of the job
+        # TODO: if job is not in squeue, check the state_file in task dir to determine if it is SUCCEEDED or FAILED, or assume it is SUCCEEDED if state_file is not found
 
 
     def _parse_job_id(self, stdout: str):

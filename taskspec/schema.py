@@ -69,5 +69,4 @@ class TaskData(BaseModel):
     state: TaskState = TaskState.IDLE
     created_at: int
     slurm_job: Optional[SlurmJobData] = None
-    state_file = '.STATE'
-
+    state_file: str = '.STATE'
