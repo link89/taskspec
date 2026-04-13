@@ -1,3 +1,4 @@
+import os
 from pydantic import BaseModel, field_validator
 from typing import Optional, List
 from enum import IntEnum
@@ -13,7 +14,7 @@ class InFile(BaseModel):
     dst: str = ''
 
 
-class TaskSpec(BaseModel):
+class SpecData(BaseModel):
     name: str = ""
     executor: str
     entrypoint: str
@@ -21,6 +22,9 @@ class TaskSpec(BaseModel):
     """
     files will be used by each task created from this spec.
     """
+
+    def get_dir(self, base_dir: str = '.') -> str:
+        return os.path.normpath(os.path.join(base_dir, 'specs', self.name))
 
     @field_validator('files', mode='before')
     @classmethod
@@ -70,5 +74,8 @@ class TaskData(BaseModel):
     slurm_job: Optional[SlurmJobData] = None
     state_file: str = '.STATE'
 
-    def get_prefix(self, spec: 'TaskSpec') -> str:
-        return f'specs/{spec.name}/tasks/{self.id}'
+    def get_dir(self, spec_dir: str) -> str:
+        return os.path.normpath(os.path.join(spec_dir, 'tasks', self.id[:2], self.id[2:]))
+
+    def get_prefix(self, spec: 'SpecData') -> str:
+        return f'specs/{spec.name}/tasks/{self.id[:2]}/{self.id[2:]}'

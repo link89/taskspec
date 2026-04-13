@@ -5,7 +5,7 @@ import glob
 from typing import Dict
 
 from ..executor import ExecutorServiceManager
-from ..schema import TaskSpec
+from ..schema import SpecData
 from .spec import SpecService
 
 logger = getLogger(__name__)
@@ -21,18 +21,19 @@ class RootService:
         for config_path in glob.glob(specs_pattern):
             spec_dir = os.path.dirname(config_path)
             spec_name = os.path.basename(spec_dir)
-            
+
             with open(config_path, 'r') as f:
                 spec_dict = yaml.safe_load(f)
-            
+
             # Instantiate TaskSpec in RootService
-            spec = TaskSpec(**spec_dict)
+            spec = SpecData(**spec_dict)
             spec.name = spec_name
-            
+            spec_dir = spec.get_dir(self._base_dir)
+
             if not spec.executor:
                 logger.warning(f"Spec {spec_name} has no executor defined, skipping")
                 continue
-            
+
             executor = self._executor_mgr.get_executor(spec.executor)
             spec_service = SpecService(spec_name, spec_dir, spec, executor)
             spec_service.init()

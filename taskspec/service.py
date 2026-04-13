@@ -1,14 +1,14 @@
 from logging import getLogger
 import json
 import time
+import yaml
 import os
 import uuid
 import glob
 from typing import Dict, Any, AsyncGenerator
 
-from ..executor import ExecutorService
-from ..schema import SpecData, TaskInput, TaskData, TaskState
-from ..util import gen_task_id
+from .executor import ExecutorServiceManager, ExecutorService
+from .schema import SpecData, TaskInput, TaskData, TaskState
 
 logger = getLogger(__name__)
 
@@ -24,7 +24,7 @@ class SpecService:
         self._load_unfinished_tasks()
 
     async def create_task(self, task_input: TaskInput) -> TaskData:
-        task_id = gen_task_id(task_input.idempotent_key)
+        task_id = str(uuid.uuid4())
         task_dir = self._get_task_dir(task_id)
 
         # prepare local task directories
@@ -33,14 +33,7 @@ class SpecService:
 
         # prepare remote executor directories
         remote_base_dir = self._executor.connector.get_base_dir()
-
-        task_data = TaskData(
-            id=task_id,
-            state=TaskState.IDLE,
-            input=task_input,
-            created_at=int(time.time()),
-        )
-        task_prefix = task_data.get_prefix(self._spec)
+        task_prefix = f'specs/{self.name}/tasks/{task_id}'
         remote_task_dir = os.path.join(remote_base_dir, task_prefix)
         await self._executor.connector.mkdir(remote_task_dir, exist_ok=True)
 
@@ -58,6 +51,13 @@ class SpecService:
             real_dst_path = os.path.join(remote_task_dir, file_data.name)
             await self._executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
             await self._executor.connector.dump_text(file_data.content, real_dst_path)
+
+        task_data = TaskData(
+            id=task_id,
+            state=TaskState.IDLE,
+            input=task_input,
+            created_at=int(time.time()),
+        )
 
         self._save_task(task_data)
         if task_input.submit:
@@ -106,15 +106,7 @@ class SpecService:
         tasks_dir = os.path.join(self.dir, 'tasks')
         if not os.path.exists(tasks_dir):
             return
-        # Use glob to find all task directories in nested structure: tasks/??/*
-        pattern = os.path.join(tasks_dir, '??', '*')
-        for task_path in glob.glob(pattern):
-            if not os.path.isdir(task_path):
-                continue
-            # task_id is the last two parts of the path combined
-            parts = task_path.split(os.sep)
-            # parts[-2] is the first 2 chars, parts[-1] is the rest
-            task_id = parts[-2] + parts[-1]
+        for task_id in os.listdir(tasks_dir):
             try:
                 task_data = self.get_task(task_id)
                 if task_data.state not in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
@@ -123,5 +115,38 @@ class SpecService:
                 logger.warning(f"Failed to load task {task_id}: {e}")
 
     def _get_task_dir(self, task_id: str) -> str:
-        assert len(task_id) > 2, "task_id should >2"
-        return os.path.join(self.dir, 'tasks', task_id[:2], task_id[2:])
+        return os.path.join(self.dir, 'tasks', task_id)
+
+class RootService:
+    def __init__(self, base_dir: str, executor_mgr: ExecutorServiceManager):
+        self._base_dir = base_dir
+        self._executor_mgr = executor_mgr
+        self._spec_services: Dict[str, SpecService] = {}
+
+    def init(self) -> None:
+        specs_pattern = os.path.join(self._base_dir, 'specs', '*', 'config.yml')
+        for config_path in glob.glob(specs_pattern):
+            spec_dir = os.path.dirname(config_path)
+            spec_name = os.path.basename(spec_dir)
+
+            with open(config_path, 'r') as f:
+                spec_dict = yaml.safe_load(f)
+
+            # Instantiate TaskSpec in RootService
+            spec = SpecData(**spec_dict)
+            spec.name = spec_name
+
+            if not spec.executor:
+                logger.warning(f"Spec {spec_name} has no executor defined, skipping")
+                continue
+
+            executor = self._executor_mgr.get_executor(spec.executor)
+            spec_service = SpecService(spec_name, spec_dir, spec, executor)
+            spec_service.init()
+            self._spec_services[spec_name] = spec_service
+            logger.info(f"Loaded spec service: {spec_name}")
+
+    def get_spec_service(self, spec_name: str) -> SpecService:
+        if spec_name not in self._spec_services:
+            raise ValueError(f"Spec service not found: {spec_name}")
+        return self._spec_services[spec_name]
