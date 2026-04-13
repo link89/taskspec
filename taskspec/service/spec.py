@@ -3,10 +3,12 @@ import json
 import time
 import os
 import uuid
+import glob
 from typing import Dict, Any, AsyncGenerator
 
 from ..executor import ExecutorService
 from ..schema import TaskSpec, TaskInput, TaskData, TaskState
+from ..util import gen_task_id
 
 logger = getLogger(__name__)
 
@@ -22,7 +24,7 @@ class SpecService:
         self._load_unfinished_tasks()
 
     async def create_task(self, task_input: TaskInput) -> TaskData:
-        task_id = str(uuid.uuid4())
+        task_id = gen_task_id(task_input.idempotent_key)
         task_dir = self._get_task_dir(task_id)
         
         # prepare local task directories
