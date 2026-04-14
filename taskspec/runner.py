@@ -107,7 +107,7 @@ class SlurmRunner(Runner):
         # Job not in squeue, check state_file
         base_dir = self._connector.get_base_dir()
         task_dir = os.path.join(base_dir, task.get_prefix(spec))
-        state_path = os.path.join(task_dir, task.state_file)
+        state_path = os.path.join(task_dir, spec.state_file)
 
         # Try to read state_file using connector.load_text
         try:

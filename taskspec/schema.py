@@ -19,6 +19,7 @@ class SpecData(BaseModel):
     executor: str
     entrypoint: str
     task_file: str = ".task.json"
+    state_file: str = ".STATE"
     files: List[InFile] = []
     """
     files will be used by each task created from this spec.
@@ -73,7 +74,6 @@ class TaskData(BaseModel):
     state: TaskState = TaskState.IDLE
     created_at: int
     slurm_job: Optional[SlurmJobData] = None
-    state_file: str = '.STATE'
 
     def get_dir(self, spec_dir: str) -> str:
         return os.path.normpath(os.path.join(spec_dir, 'tasks', self.id[:2], self.id[2:]))
