@@ -18,6 +18,7 @@ class SpecData(BaseModel):
     name: str = ""
     executor: str
     entrypoint: str
+    task_file: str = ".task.json"
     files: List[InFile] = []
     """
     files will be used by each task created from this spec.

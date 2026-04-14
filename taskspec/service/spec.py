@@ -28,8 +28,7 @@ class SpecService:
         task_dir = self._get_task_dir(task_id)
 
         # prepare local task directories
-        local_meta_dir = os.path.join(task_dir, '.meta')
-        os.makedirs(local_meta_dir, exist_ok=True)
+        os.makedirs(task_dir, exist_ok=True)
 
         # prepare remote executor directories
         remote_base_dir = self._executor.connector.get_base_dir()
@@ -77,7 +76,7 @@ class SpecService:
             return self._unfinished_tasks[task_id]
 
         task_dir = self._get_task_dir(task_id)
-        task_data_file = os.path.join(task_dir, '.meta', 'task_data.json')
+        task_data_file = os.path.join(task_dir, self._spec.task_file)
         if not os.path.exists(task_data_file):
             raise FileNotFoundError(f"Task data file not found: {task_data_file}")
         with open(task_data_file, 'r', encoding='utf-8') as f:
@@ -97,7 +96,7 @@ class SpecService:
 
     def _save_task(self, task_data: TaskData) -> None:
         task_dir = self._get_task_dir(task_data.id)
-        task_data_file = os.path.join(task_dir, '.meta', 'task_data.json')
+        task_data_file = os.path.join(task_dir, self._spec.task_file)
         os.makedirs(os.path.dirname(task_data_file), exist_ok=True)
         with open(task_data_file, 'w', encoding='utf-8') as f:
             json.dump(task_data.model_dump(), f)
