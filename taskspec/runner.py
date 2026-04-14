@@ -47,7 +47,6 @@ class SlurmRunner(Runner):
 
         self.config = config
         self._connector = connector
-        self._squeue_ids = set()
         self._query_interval_s = query_interval_s
         self._last_update_ts = 0
 
@@ -72,8 +71,8 @@ class SlurmRunner(Runner):
             raise ValueError(f"Failed to parse job id: {result.stdout}, err: {result.stderr}")
 
         logger.info(f'Job submitted: {job_id}')
-        job_data = SlurmJobData(id=job_id, state='PENDING')
-        return task.model_copy(update={'slurm_job': job_data})
+        task.slurm_job = SlurmJobData(id=job_id, state='PENDING')
+        return task
 
     async def query(self, task: TaskData):
         if not task.slurm_job:
