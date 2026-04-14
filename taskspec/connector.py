@@ -20,6 +20,9 @@ class Connector:
     async def dump_text(self, text: str, path: str, encoding='utf-8') -> None:
         raise NotImplementedError
 
+    async def load_text(self, path: str, encoding='utf-8') -> str:
+        raise NotImplementedError
+
     async def put(self, src: str, dst: str) -> None:
         raise NotImplementedError
 
@@ -56,6 +59,10 @@ class LocalConnector(Connector):
     async def dump_text(self, text: str, path: str, encoding='utf-8'):
         with open(path, 'w', encoding=encoding) as f:
             f.write(text)
+
+    async def load_text(self, path: str, encoding='utf-8') -> str:
+        with open(path, 'r', encoding=encoding) as f:
+            return f.read()
 
     async def put(self, src: str, dst: str):
         shutil.copyfile(src, dst)
@@ -96,6 +103,12 @@ class SshConnector(Connector):
         async with conn.start_sftp_client() as sftp:
             async with sftp.open(path, 'w', encoding=encoding) as f:
                 await f.write(text)
+
+    async def load_text(self, path: str, encoding='utf-8') -> str:
+        conn = await self._get_conn()
+        async with conn.start_sftp_client() as sftp:
+            async with sftp.open(path, 'r', encoding=encoding) as f:
+                return await f.read()
 
     async def put(self, src: str, dst: str) -> None:
         conn = await self._get_conn()

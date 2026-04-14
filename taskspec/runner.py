@@ -49,6 +49,24 @@ class SlurmRunner(Runner):
         self._connector = connector
         self._query_interval_s = query_interval_s
         self._last_update_ts = 0
+        self._squeue_data = {}
+
+    async def _update_squeue(self):
+        import time
+        now = time.time()
+        if now - self._last_update_ts < self._query_interval_s:
+            return
+
+        # squeue -o "%i|%T" returns JOBID|STATE
+        cmd = f"{self.config.squeue} --noheader -o \"%i|%T\""
+        result = await self._connector.shell(cmd)
+        if result.returncode == 0:
+            stdout = result.stdout.decode() if isinstance(result.stdout, bytes) else result.stdout
+            data = parse_csv(f"JOBID|STATE\n{stdout}")
+            self._squeue_data = {row['JOBID']: row['STATE'] for row in data if 'JOBID' in row and 'STATE' in row}
+            self._last_update_ts = now
+        else:
+            logger.error(f"Failed to run squeue: {result.stderr}")
 
     async def submit(self, spec: SpecData, task: TaskData):
         base_dir = self._connector.get_base_dir()
@@ -74,12 +92,42 @@ class SlurmRunner(Runner):
         task.slurm_job = SlurmJobData(id=job_id, state='PENDING')
         return task
 
-    async def query(self, task: TaskData):
+    async def query(self, spec: SpecData, task: TaskData):
         if not task.slurm_job:
             raise ValueError("Task has no associated Slurm job")
+
+        await self._update_squeue()
         job_id = task.slurm_job.id
-        # TODO: query squeue for the state of the job
-        # TODO: if job is not in squeue, check the state_file in task dir to determine if it is SUCCEEDED or FAILED, or assume it is SUCCEEDED if state_file is not found
+
+        if job_id in self._squeue_data:
+            task.slurm_job.state = self._squeue_data[job_id]
+            task.state = TaskState.SUBMITTED
+            return task
+
+        # Job not in squeue, check state_file
+        base_dir = self._connector.get_base_dir()
+        task_dir = os.path.join(base_dir, task.get_prefix(spec))
+        state_path = os.path.join(task_dir, task.state_file)
+
+        # Try to read state_file using connector.load_text
+        try:
+            raw_state = await self._connector.load_text(state_path)
+            raw_state = raw_state.strip()
+        except Exception as e:
+            logger.warning(f"Job {job_id} not in squeue and state file {state_path} not found or unreadable: {e}")
+            task.state = TaskState.FAILED
+            return task
+
+        if not raw_state:
+            task.state = TaskState.FAILED
+            return task
+
+        first_line = raw_state.splitlines()[0].strip().lower()
+        if first_line in ('ok', 'success', 'done'):
+            task.state = TaskState.SUCCEEDED
+        else:
+            task.state = TaskState.FAILED
+        return task
 
 
     def _parse_job_id(self, stdout: str):
