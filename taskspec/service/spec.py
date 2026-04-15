@@ -4,7 +4,8 @@ import time
 import os
 import uuid
 import glob
-from typing import Dict, Any, AsyncGenerator
+import asyncio
+from typing import Dict, Any, AsyncGenerator, Set
 
 from ..executor import ExecutorService
 from ..schema import SpecData, TaskInput, TaskData, TaskState
@@ -18,10 +19,42 @@ class SpecService:
         self.dir = dir
         self._spec = spec
         self._executor = executor
-        self._unfinished_tasks: Dict[str, TaskData] = {}
+        self._unfinished_tasks: Set[str] = set()
 
     def init(self) -> None:
         self._load_unfinished_tasks()
+        asyncio.create_task(self._poll_loop())
+
+    async def _poll_loop(self) -> None:
+        while True:
+            try:
+                await self.poll_state()
+            except Exception as e:
+                logger.error(f"Error in poll_loop for {self.name}: {e}")
+            await asyncio.sleep(self._spec.poll_interval_s)
+
+    async def poll_state(self) -> None:
+        if not self._unfinished_tasks:
+            return
+
+        # Create a copy of the set to iterate over while potentially modifying it
+        task_ids = list(self._unfinished_tasks)
+        for task_id in task_ids:
+            try:
+                task_data = self.get_task(task_id)
+                old_state = task_data.state
+                new_state = await self._executor.runner.query_state(self._spec, task_data)
+
+                if new_state != old_state:
+                    task_data.state = new_state
+                    self._save_task(task_data)
+                    logger.info(f"Task {task_id} state changed from {old_state} to {new_state}")
+
+                if new_state in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
+                    self._unfinished_tasks.remove(task_id)
+                    logger.info(f"Task {task_id} finished, removed from unfinished_tasks")
+            except Exception as e:
+                logger.error(f"Failed to poll state for task {task_id}: {e}")
 
     async def create_task(self, task_input: TaskInput) -> TaskData:
         task_id = gen_task_id(task_input.idempotent_key)
@@ -63,7 +96,7 @@ class SpecService:
             try:
                 task_data = await self._executor.runner.submit(self._spec, task_data)
                 if task_data.state not in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
-                    self._unfinished_tasks[task_id] = task_data
+                    self._unfinished_tasks.add(task_id)
             except Exception:
                 task_data.state = TaskState.ERROR
                 raise
@@ -72,9 +105,6 @@ class SpecService:
         return task_data
 
     def get_task(self, task_id: str) -> TaskData:
-        if task_id in self._unfinished_tasks:
-            return self._unfinished_tasks[task_id]
-
         task_dir = self._get_task_dir(task_id)
         task_data_file = os.path.join(task_dir, self._spec.task_file)
         if not os.path.exists(task_data_file):
@@ -117,7 +147,7 @@ class SpecService:
             try:
                 task_data = self.get_task(task_id)
                 if task_data.state not in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
-                    self._unfinished_tasks[task_id] = task_data
+                    self._unfinished_tasks.add(task_id)
             except Exception as e:
                 logger.warning(f"Failed to load task {task_id}: {e}")
 

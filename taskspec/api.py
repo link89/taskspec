@@ -36,4 +36,9 @@ def make_fastapi_app(base_url: str, root_service: RootService) -> FastAPI:
 
     app = FastAPI(root_path=base_url)
     app.include_router(router)
+
+    @app.on_event("startup")
+    async def startup_event():
+        root_service.init()
+
     return app

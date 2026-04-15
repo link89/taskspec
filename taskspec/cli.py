@@ -19,7 +19,6 @@ def start_server(path: str):
         config = Config(**yaml.safe_load(f), base_dir=path)
     executor_manager = ExecutorServiceManager(config.executors, config.base_dir)
     root_service = RootService(config.base_dir, executor_manager)
-    root_service.init()
     app = make_fastapi_app(base_url=config.server.base_url, root_service=root_service)
     uvicorn.run(app, host=config.server.host, port=config.server.port)
 

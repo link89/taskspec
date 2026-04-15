@@ -34,7 +34,7 @@ class Runner:
     async def submit(self, spec: SpecData, task: TaskData) -> TaskData:
         raise NotImplementedError
 
-    async def query(self, spec: SpecData, task: TaskData):
+    async def query_state(self, spec: SpecData, task: TaskData) -> TaskState:
         raise NotImplementedError
 
 
@@ -92,7 +92,7 @@ class SlurmRunner(Runner):
         task.slurm_job = SlurmJobData(id=job_id, state='PENDING')
         return task
 
-    async def query(self, spec: SpecData, task: TaskData):
+    async def query_state(self, spec: SpecData, task: TaskData) -> TaskState:
         if not task.slurm_job:
             raise ValueError("Task has no associated Slurm job")
 
@@ -101,8 +101,7 @@ class SlurmRunner(Runner):
 
         if job_id in self._squeue_data:
             task.slurm_job.state = self._squeue_data[job_id]
-            task.state = TaskState.SUBMITTED
-            return task
+            return TaskState.SUBMITTED
 
         # Job not in squeue, check state_file
         base_dir = self._connector.get_base_dir()
@@ -115,19 +114,16 @@ class SlurmRunner(Runner):
             raw_state = raw_state.strip()
         except Exception as e:
             logger.warning(f"Job {job_id} not in squeue and state file {state_path} not found or unreadable: {e}")
-            task.state = TaskState.FAILED
-            return task
+            return TaskState.FAILED
 
         if not raw_state:
-            task.state = TaskState.FAILED
-            return task
+            return TaskState.FAILED
 
         first_line = raw_state.splitlines()[0].strip().lower()
         if first_line in ('ok', 'success', 'done', 'pass'):
-            task.state = TaskState.SUCCEEDED
+            return TaskState.SUCCEEDED
         else:
-            task.state = TaskState.FAILED
-        return task
+            return TaskState.FAILED
 
 
     def _parse_job_id(self, stdout: str):

@@ -20,6 +20,7 @@ class SpecData(BaseModel):
     entrypoint: str
     task_file: str = ".task.json"
     state_file: str = ".STATE"
+    poll_interval_s: int = 5
     files: List[InFile] = []
     """
     files will be used by each task created from this spec.
