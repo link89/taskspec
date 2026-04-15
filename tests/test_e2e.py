@@ -9,14 +9,27 @@ class TestTaskSpecE2E(unittest.TestCase):
     session: requests.Session
     server_process = None
     server_url = "http://127.0.0.1:8011"
+    auth_file = "demo/auth.jsonl"
+    test_key = "testuser"
+    test_secret = "testpass"
 
     @classmethod
     def setUpClass(cls):
-        # Bypass proxy for local requests
+        # 1. Add auth key to demo
+        subprocess.run([
+            "python3", "-m", "taskspec.cli", "add_auth_key", "demo/",
+            "--key", cls.test_key, "--secret", cls.test_secret
+        ], check=True)
+
+        # 2. Setup session with auth headers
         cls.session = requests.Session()
         cls.session.trust_env = False
+        cls.session.headers.update({
+            "X-TaskSpec-Key": cls.test_key,
+            "X-TaskSpec-Secret": cls.test_secret
+        })
 
-        # Start the server from the project root
+        # 3. Start the server from the project root (no --no_auth)
         cls.server_process = subprocess.Popen(
             ["python3", "-m", "taskspec.cli", "start_server", "demo/"],
             stdout=subprocess.PIPE,
@@ -43,6 +56,10 @@ class TestTaskSpecE2E(unittest.TestCase):
             stdout, stderr = cls.server_process.communicate(timeout=1)
             print(f"Server failed to start.\nStdout: {stdout.decode()}\nStderr: {stderr.decode()}")
             raise RuntimeError("Server failed to start")
+        
+        # Give some extra time for background initialization (RootService.init)
+        print("[Test] Server started, waiting 5s for initialization...")
+        time.sleep(5)
 
     @classmethod
     def tearDownClass(cls):
@@ -53,6 +70,32 @@ class TestTaskSpecE2E(unittest.TestCase):
             except Exception as e:
                 print(f"Error stopping server: {e}")
                 os.killpg(os.getpgid(cls.server_process.pid), signal.SIGKILL)
+        
+        # Cleanup auth file
+        if os.path.exists(cls.auth_file):
+            os.remove(cls.auth_file)
+
+    def test_auth_failures(self):
+        spec_name = "hello-world"
+        url = f"{self.server_url}/specs/{spec_name}/tasks/nonexistent"
+        
+        # Wait until server is definitely ready (after init)
+        max_wait = 10
+        start = time.time()
+        while time.time() - start < max_wait:
+            resp = self.session.get(url)
+            if resp.status_code != 503:
+                break
+            time.sleep(1)
+
+        # 1. No auth headers
+        resp = requests.get(url)
+        self.assertEqual(resp.status_code, 401)
+        
+        # 2. Invalid secret
+        headers = {"X-TaskSpec-Key": self.test_key, "X-TaskSpec-Secret": "wrong"}
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 403)
 
     def test_hello_world_submission_and_file_retrieval(self):
         spec_name = "hello-world"

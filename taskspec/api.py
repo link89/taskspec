@@ -1,7 +1,8 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from .schema import  TaskInput
 from .service import RootService
+from .service.auth import AuthService
 
 
 class Controller:
@@ -28,9 +29,23 @@ class Controller:
         return StreamingResponse(fstream)
 
 
-def make_fastapi_app(base_url: str, root_service: RootService) -> FastAPI:
+def make_fastapi_app(base_url: str, root_service: RootService, auth_service: AuthService = None) -> FastAPI:
     controller = Controller(root_service=root_service)
-    router = APIRouter()
+
+    async def verify_auth(
+        x_taskspec_key: str = Header(None),
+        x_taskspec_secret: str = Header(None)
+    ):
+        if auth_service is None:
+            return
+        
+        if not x_taskspec_key or not x_taskspec_secret:
+            raise HTTPException(status_code=401, detail="Authentication headers missing")
+        
+        if not auth_service.verify(x_taskspec_key, x_taskspec_secret):
+            raise HTTPException(status_code=403, detail="Invalid authentication credentials")
+
+    router = APIRouter(dependencies=[Depends(verify_auth)])
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}",
                          endpoint=controller.get_task, methods=["GET"])
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}/input",
