@@ -108,6 +108,21 @@ class TestTaskSpecE2E(unittest.TestCase):
         self.assertTrue(file_found, "Timed out waiting for output.txt")
         print("[Test] Successfully verified output.txt content.")
 
+        # 5. Wait for task state to be terminated
+        print("[Test] Waiting for task state to become terminated...")
+        terminated = False
+        while time.time() - start_time < max_wait:
+            resp = self.session.get(f"{self.server_url}/specs/{spec_name}/tasks/{task_id}")
+            if resp.status_code == 200:
+                state = resp.json()["state"]
+                # TaskState.SUCCEEDED = 2, FAILED = 3, ERROR = 4
+                if state >= 2:
+                    terminated = True
+                    print(f"[Test] Task terminated with state {state}")
+                    break
+            time.sleep(2)
+        self.assertTrue(terminated, "Task did not reach terminated state")
+
     def test_metadata_only_no_submit(self):
         spec_name = "hello-world"
         payload = {"submit": False}

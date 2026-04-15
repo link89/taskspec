@@ -61,6 +61,10 @@ class TaskState(IntEnum):
     FAILED = 3
     ERROR = 4  # internal error, e.g. failed to submit
 
+    @classmethod
+    def is_terminated(cls, state: "TaskState") -> bool:
+        return state in (cls.SUCCEEDED, cls.FAILED, cls.ERROR)
+
 
 class TaskInput(BaseModel):
     idempotent_key: str = ''

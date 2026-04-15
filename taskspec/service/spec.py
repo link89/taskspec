@@ -50,7 +50,7 @@ class SpecService:
                     self._save_task(task_data)
                     logger.info(f"Task {task_id} state changed from {old_state} to {new_state}")
 
-                if new_state in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
+                if TaskState.is_terminated(new_state):
                     self._unfinished_tasks.remove(task_id)
                     logger.info(f"Task {task_id} finished, removed from unfinished_tasks")
             except Exception as e:
@@ -95,7 +95,7 @@ class SpecService:
         if task_input.submit:
             try:
                 task_data = await self._executor.runner.submit(self._spec, task_data)
-                if task_data.state not in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
+                if not TaskState.is_terminated(task_data.state):
                     self._unfinished_tasks.add(task_id)
             except Exception:
                 task_data.state = TaskState.ERROR
@@ -146,7 +146,7 @@ class SpecService:
             task_id = parts[-2] + parts[-1]
             try:
                 task_data = self.get_task(task_id)
-                if task_data.state not in (TaskState.SUCCEEDED, TaskState.FAILED, TaskState.ERROR):
+                if not TaskState.is_terminated(task_data.state):
                     self._unfinished_tasks.add(task_id)
             except Exception as e:
                 logger.warning(f"Failed to load task {task_id}: {e}")
