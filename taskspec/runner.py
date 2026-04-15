@@ -123,7 +123,7 @@ class SlurmRunner(Runner):
             return task
 
         first_line = raw_state.splitlines()[0].strip().lower()
-        if first_line in ('ok', 'success', 'done'):
+        if first_line in ('ok', 'success', 'done', 'pass'):
             task.state = TaskState.SUCCEEDED
         else:
             task.state = TaskState.FAILED
