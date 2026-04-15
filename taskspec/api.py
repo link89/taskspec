@@ -28,22 +28,32 @@ class Controller:
         fstream = spec_service.get_task_file(task_id, file_path)
         return StreamingResponse(fstream)
 
+    async def health(self):
+        return {"status": "ok"}
+
 
 def make_fastapi_app(base_url: str, root_service: RootService, auth_service: AuthService = None) -> FastAPI:
     controller = Controller(root_service=root_service)
 
     async def verify_auth(
-        x_taskspec_key: str = Header(None),
-        x_taskspec_secret: str = Header(None)
+        authorization: str = Header(None)
     ):
         if auth_service is None:
             return
         
-        if not x_taskspec_key or not x_taskspec_secret:
-            raise HTTPException(status_code=401, detail="Authentication headers missing")
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Authentication required")
         
-        if not auth_service.verify(x_taskspec_key, x_taskspec_secret):
+        token = authorization[len("Bearer "):]
+        if ":" not in token:
+            raise HTTPException(status_code=401, detail="Invalid token format")
+        
+        key, secret = token.split(":", 1)
+        if not auth_service.verify(key, secret):
             raise HTTPException(status_code=403, detail="Invalid authentication credentials")
+
+    public_router = APIRouter()
+    public_router.add_api_route("/health", endpoint=controller.health, methods=["GET"])
 
     router = APIRouter(dependencies=[Depends(verify_auth)])
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}",
@@ -56,6 +66,7 @@ def make_fastapi_app(base_url: str, root_service: RootService, auth_service: Aut
                          endpoint=controller.get_task_file, methods=["GET"])
 
     app = FastAPI(root_path=base_url)
+    app.include_router(public_router)
     app.include_router(router)
 
     @app.on_event("startup")

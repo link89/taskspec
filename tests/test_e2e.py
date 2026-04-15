@@ -25,8 +25,7 @@ class TestTaskSpecE2E(unittest.TestCase):
         cls.session = requests.Session()
         cls.session.trust_env = False
         cls.session.headers.update({
-            "X-TaskSpec-Key": cls.test_key,
-            "X-TaskSpec-Secret": cls.test_secret
+            "Authorization": f"Bearer {cls.test_key}:{cls.test_secret}"
         })
 
         # 3. Start the server from the project root (no --no_auth)
@@ -37,18 +36,19 @@ class TestTaskSpecE2E(unittest.TestCase):
             preexec_fn=os.setsid
         )
 
-        # Wait for server to be ready
-        max_retries = 15
+        # Wait for server to be ready using /health endpoint (no auth needed)
+        max_retries = 30
         ready = False
+        print("[Test] Waiting for server /health...")
         for i in range(max_retries):
             try:
-                # Check if server is up by hitting /docs
-                resp = cls.session.get(f"{cls.server_url}/docs", timeout=2)
+                resp = requests.get(f"{cls.server_url}/health", timeout=2)
                 if resp.status_code == 200:
                     ready = True
                     break
             except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
-                time.sleep(1)
+                pass
+            time.sleep(1)
 
         if not ready:
             # Cleanup on failure
@@ -57,9 +57,7 @@ class TestTaskSpecE2E(unittest.TestCase):
             print(f"Server failed to start.\nStdout: {stdout.decode()}\nStderr: {stderr.decode()}")
             raise RuntimeError("Server failed to start")
         
-        # Give some extra time for background initialization (RootService.init)
-        print("[Test] Server started, waiting 5s for initialization...")
-        time.sleep(5)
+        print("[Test] Server is ready.")
 
     @classmethod
     def tearDownClass(cls):
@@ -79,23 +77,19 @@ class TestTaskSpecE2E(unittest.TestCase):
         spec_name = "hello-world"
         url = f"{self.server_url}/specs/{spec_name}/tasks/nonexistent"
         
-        # Wait until server is definitely ready (after init)
-        max_wait = 10
-        start = time.time()
-        while time.time() - start < max_wait:
-            resp = self.session.get(url)
-            if resp.status_code != 503:
-                break
-            time.sleep(1)
-
         # 1. No auth headers
         resp = requests.get(url)
         self.assertEqual(resp.status_code, 401)
         
         # 2. Invalid secret
-        headers = {"X-TaskSpec-Key": self.test_key, "X-TaskSpec-Secret": "wrong"}
+        headers = {"Authorization": f"Bearer {self.test_key}:wrong"}
         resp = requests.get(url, headers=headers)
         self.assertEqual(resp.status_code, 403)
+        
+        # 3. Invalid format
+        headers = {"Authorization": f"Bearer {self.test_key}"}
+        resp = requests.get(url, headers=headers)
+        self.assertEqual(resp.status_code, 401)
 
     def test_hello_world_submission_and_file_retrieval(self):
         spec_name = "hello-world"
