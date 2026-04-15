@@ -47,6 +47,7 @@ class SpecService:
 
                 if new_state != old_state:
                     task_data.state = new_state
+                    task_data.updated_at = int(time.time())
                     self._save_task(task_data)
                     logger.info(f"Task {task_id} state changed from {old_state} to {new_state}")
 
@@ -66,11 +67,12 @@ class SpecService:
         # prepare remote executor directories
         remote_base_dir = self._executor.connector.get_base_dir()
 
+        now = int(time.time())
         task_data = TaskData(
             id=task_id,
             state=TaskState.IDLE,
-            input=task_input,
-            created_at=int(time.time()),
+            created_at=now,
+            updated_at=now,
         )
         task_prefix = task_data.get_prefix(self._spec)
         remote_task_dir = os.path.join(remote_base_dir, task_prefix)
@@ -91,6 +93,7 @@ class SpecService:
             await self._executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
             await self._executor.connector.dump_text(file_data.content, real_dst_path)
 
+        self._save_task_input(task_id, task_input)
         self._save_task(task_data)
         if task_input.submit:
             try:
@@ -101,17 +104,25 @@ class SpecService:
                 task_data.state = TaskState.ERROR
                 raise
             finally:
+                task_data.updated_at = int(time.time())
                 self._save_task(task_data)
         return task_data
 
     def get_task(self, task_id: str) -> TaskData:
-        task_dir = self._get_task_dir(task_id)
-        task_data_file = os.path.join(task_dir, self._spec.task_file)
+        task_data_file = self._get_task_data_file(task_id)
         if not os.path.exists(task_data_file):
             raise FileNotFoundError(f"Task data file not found: {task_data_file}")
         with open(task_data_file, 'r', encoding='utf-8') as f:
             task_data = json.load(f)
         return TaskData(**task_data)
+
+    def get_task_input(self, task_id: str) -> TaskInput:
+        task_input_file = self._get_task_input_file(task_id)
+        if not os.path.exists(task_input_file):
+            raise FileNotFoundError(f"Task input file not found: {task_input_file}")
+        with open(task_input_file, 'r', encoding='utf-8') as f:
+            task_input = json.load(f)
+        return TaskInput(**task_input)
 
     def get_task_file(self, task_id: str, file_path: str) -> AsyncGenerator[bytes, Any]:
         task_data = self.get_task(task_id)
@@ -125,11 +136,16 @@ class SpecService:
         return self._executor.connector.get_fstream(remote_file_path)
 
     def _save_task(self, task_data: TaskData) -> None:
-        task_dir = self._get_task_dir(task_data.id)
-        task_data_file = os.path.join(task_dir, self._spec.task_file)
+        task_data_file = self._get_task_data_file(task_data.id)
         os.makedirs(os.path.dirname(task_data_file), exist_ok=True)
         with open(task_data_file, 'w', encoding='utf-8') as f:
             json.dump(task_data.model_dump(), f)
+
+    def _save_task_input(self, task_id: str, task_input: TaskInput) -> None:
+        task_input_file = self._get_task_input_file(task_id)
+        os.makedirs(os.path.dirname(task_input_file), exist_ok=True)
+        with open(task_input_file, 'w', encoding='utf-8') as f:
+            json.dump(task_input.model_dump(), f)
 
     def _load_unfinished_tasks(self) -> None:
         tasks_dir = os.path.join(self.dir, 'tasks')
@@ -153,4 +169,10 @@ class SpecService:
 
     def _get_task_dir(self, task_id: str) -> str:
         assert len(task_id) > 2, "task_id should >2"
-        return os.path.join(self.dir, 'tasks', task_id[:2], task_id[2:])
+        return os.path.normpath(os.path.join(self.dir, 'tasks', task_id[:2], task_id[2:]))
+
+    def _get_task_data_file(self, task_id: str) -> str:
+        return os.path.join(self._get_task_dir(task_id), self._spec.meta_dir, "task.json")
+
+    def _get_task_input_file(self, task_id: str) -> str:
+        return os.path.join(self._get_task_dir(task_id), self._spec.meta_dir, "input.json")

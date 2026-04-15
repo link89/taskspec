@@ -18,7 +18,7 @@ class SpecData(BaseModel):
     name: str = ""
     executor: str
     entrypoint: str
-    task_file: str = ".task.json"
+    meta_dir: str = ".meta"
     state_file: str = ".STATE"
     poll_interval_s: int = 5
     files: List[InFile] = []
@@ -75,9 +75,9 @@ class TaskInput(BaseModel):
 
 class TaskData(BaseModel):
     id: str
-    input: TaskInput
     state: TaskState = TaskState.IDLE
     created_at: int
+    updated_at: int
     slurm_job: Optional[SlurmJobData] = None
 
     def get_dir(self, spec_dir: str) -> str:

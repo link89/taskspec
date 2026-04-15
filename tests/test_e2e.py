@@ -134,7 +134,11 @@ class TestTaskSpecE2E(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["id"], task_id)
-        self.assertFalse(data["input"]["submit"])
+
+        resp = self.session.get(f"{self.server_url}/specs/{spec_name}/tasks/{task_id}/input")
+        self.assertEqual(resp.status_code, 200)
+        input_data = resp.json()
+        self.assertFalse(input_data["submit"])
 
 if __name__ == "__main__":
     unittest.main()

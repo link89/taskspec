@@ -13,6 +13,10 @@ class Controller:
         spec_service = self._root_service.get_spec_service(spec_name)
         return spec_service.get_task(task_id)
 
+    async def get_task_input(self, spec_name: str, task_id: str):
+        spec_service = self._root_service.get_spec_service(spec_name)
+        return spec_service.get_task_input(task_id)
+
     async def create_task(self, spec_name: str, task_input: TaskInput):
         spec_service = self._root_service.get_spec_service(spec_name)
         task_data = await spec_service.create_task(task_input)
@@ -29,6 +33,8 @@ def make_fastapi_app(base_url: str, root_service: RootService) -> FastAPI:
     router = APIRouter()
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}",
                          endpoint=controller.get_task, methods=["GET"])
+    router.add_api_route("/specs/{spec_name}/tasks/{task_id}/input",
+                         endpoint=controller.get_task_input, methods=["GET"])
     router.add_api_route("/specs/{spec_name}/tasks",
                          endpoint=controller.create_task, methods=["POST"])
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}/files/{file_path:path}",
