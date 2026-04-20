@@ -8,13 +8,13 @@ import asyncio
 from typing import Dict, Any, AsyncGenerator, Set, Optional
 
 from ..executor import ExecutorService
-from ..schema import TaskSpec, TaskInput, TaskData, TaskState
+from ..schema import SpecData, TaskInput, TaskData, TaskState
 from ..util import gen_task_id, fset, fget, fdel
 
 logger = getLogger(__name__)
 
 class SpecService:
-    def __init__(self, name: str, dir: str, spec: TaskSpec, executor: ExecutorService):
+    def __init__(self, name: str, dir: str, spec: SpecData, executor: ExecutorService):
         self.name = name
         self.dir = dir
         self._spec = spec

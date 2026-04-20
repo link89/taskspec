@@ -7,7 +7,7 @@ import re
 import os
 
 from .connector import Connector
-from .schema import TaskData, SlurmJobData, TaskSpec, TaskState
+from .schema import TaskData, SlurmJobData, SpecData, TaskState
 
 
 logger = getLogger(__name__)
@@ -23,10 +23,10 @@ class RunnerConfig(BaseModel):
 
 
 class Runner:
-    async def submit(self, spec: TaskSpec, task: TaskData, env: Optional[Dict[str, str]] = None) -> TaskData:
+    async def submit(self, spec: SpecData, task: TaskData, env: Optional[Dict[str, str]] = None) -> TaskData:
         raise NotImplementedError
 
-    async def query_state(self, spec: TaskSpec, task: TaskData) -> TaskState:
+    async def query_state(self, spec: SpecData, task: TaskData) -> TaskState:
         raise NotImplementedError
 
 
@@ -60,7 +60,7 @@ class SlurmRunner(Runner):
         else:
             logger.error(f"Failed to run squeue: {result.stderr}")
 
-    async def submit(self, spec: TaskSpec, task: TaskData, env: Optional[Dict[str, str]] = None):
+    async def submit(self, spec: SpecData, task: TaskData, env: Optional[Dict[str, str]] = None):
         base_dir = self._connector.get_base_dir()
         task_dir = os.path.join(base_dir, task.get_prefix(spec))
 
@@ -88,7 +88,7 @@ class SlurmRunner(Runner):
         task.slurm_job = SlurmJobData(id=job_id, state='PENDING')
         return task
 
-    async def query_state(self, spec: TaskSpec, task: TaskData) -> TaskState:
+    async def query_state(self, spec: SpecData, task: TaskData) -> TaskState:
         if not task.slurm_job:
             raise ValueError("Task has no associated Slurm job")
 

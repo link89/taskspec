@@ -49,7 +49,7 @@ class WorkerPool(BaseModel):
         return process_in_files(v)
 
 
-class TaskSpec(BaseModel):
+class SpecData(BaseModel):
     name: str = ""
     executor: str
     on_demand: Optional[OnDemand] = None
@@ -113,6 +113,6 @@ class TaskData(BaseModel):
         base = 'workers' if self.is_worker else 'tasks'
         return os.path.normpath(os.path.join(spec_dir, base, self.id[:2], self.id[2:]))
 
-    def get_prefix(self, spec: 'TaskSpec') -> str:
+    def get_prefix(self, spec: 'SpecData') -> str:
         base = 'workers' if self.is_worker else 'tasks'
         return f'specs/{spec.name}/{base}/{self.id[:2]}/{self.id[2:]}'

@@ -5,7 +5,7 @@ import glob
 from typing import Dict
 
 from ..executor import ExecutorServiceManager
-from ..schema import TaskSpec
+from ..schema import SpecData
 from .spec import SpecService
 
 logger = getLogger(__name__)
@@ -28,7 +28,7 @@ class RootService:
 
             # Instantiate TaskSpec in RootService
             spec_dict['name'] = spec_name
-            spec = TaskSpec(**spec_dict)
+            spec = SpecData(**spec_dict)
             spec_dir = spec.get_dir(self._base_dir)
 
             if not spec.executor:
