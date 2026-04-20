@@ -3,4 +3,4 @@
 #SBATCH -p cpu
 #SBATCH -t 00:02:00
 source /public/scripts/proxy.sh
-python3 worker.py
+python3 -u worker.py

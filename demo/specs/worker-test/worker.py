@@ -6,10 +6,16 @@ import json
 def worker():
     url = os.environ.get("__TASK_QUEUE_URL")
     token = os.environ.get("__TASK_QUEUE_TOKEN")
+    http_proxy = os.environ.get("HTTP_PROXY")
+    proxies = {"http": http_proxy, "https": http_proxy} if http_proxy else None
+    assert url and token, "Worker requires __TASK_QUEUE_URL and __TASK_QUEUE_TOKEN environment variables"
+
     print(f"Worker started with URL: {url}")
     while True:
         try:
-            resp = requests.get(url, headers={"Authorization": f"Bearer {token}"}, params={"wait": 5})
+            print(f"Worker polling for tasks...")
+            resp = requests.get(url, headers={"Authorization": f"Bearer {token}"}, params={"wait": 5}, proxies=proxies)
+            print(f"Worker received response: {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
                 task_id = data["id"]
