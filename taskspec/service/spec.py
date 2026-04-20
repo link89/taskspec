@@ -19,10 +19,10 @@ class SpecService:
         self.dir = dir
         self._spec = spec
         self._executor = executor
-        self._unfinished_tasks: Set[str] = set()
+        self._active_tasks: Set[str] = set()
 
     def init(self) -> None:
-        self._load_unfinished_tasks()
+        self._load_active_tasks()
         asyncio.create_task(self._poll_loop())
 
     async def _poll_loop(self) -> None:
@@ -34,11 +34,11 @@ class SpecService:
             await asyncio.sleep(self._spec.poll_interval_s)
 
     async def poll_state(self) -> None:
-        if not self._unfinished_tasks:
+        if not self._active_tasks:
             return
 
         # Create a copy of the set to iterate over while potentially modifying it
-        task_ids = list(self._unfinished_tasks)
+        task_ids = list(self._active_tasks)
         for task_id in task_ids:
             try:
                 task_data = self.get_task(task_id)
@@ -52,7 +52,7 @@ class SpecService:
                     logger.info(f"Task {task_id} state changed from {old_state} to {new_state}")
 
                 if TaskState.is_terminated(new_state):
-                    self._unfinished_tasks.remove(task_id)
+                    self._active_tasks.remove(task_id)
                     logger.info(f"Task {task_id} finished, removed from unfinished_tasks")
             except Exception as e:
                 logger.error(f"Failed to poll state for task {task_id}: {e}")
@@ -99,7 +99,7 @@ class SpecService:
             try:
                 task_data = await self._executor.runner.submit(self._spec, task_data)
                 if not TaskState.is_terminated(task_data.state):
-                    self._unfinished_tasks.add(task_id)
+                    self._active_tasks.add(task_id)
             except Exception:
                 task_data.state = TaskState.ERROR
                 raise
@@ -147,7 +147,7 @@ class SpecService:
         with open(task_input_file, 'w', encoding='utf-8') as f:
             json.dump(task_input.model_dump(), f)
 
-    def _load_unfinished_tasks(self) -> None:
+    def _load_active_tasks(self) -> None:
         tasks_dir = os.path.join(self.dir, 'tasks')
         if not os.path.exists(tasks_dir):
             return
@@ -163,7 +163,7 @@ class SpecService:
             try:
                 task_data = self.get_task(task_id)
                 if not TaskState.is_terminated(task_data.state):
-                    self._unfinished_tasks.add(task_id)
+                    self._active_tasks.add(task_id)
             except Exception as e:
                 logger.warning(f"Failed to load task {task_id}: {e}")
 
