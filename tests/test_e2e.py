@@ -177,5 +177,47 @@ class TestTaskSpecE2E(unittest.TestCase):
         input_data = resp.json()
         self.assertFalse(input_data["submit"])
 
+    def test_worker_pool_submission(self):
+        spec_name = "worker-test"
+
+        payload = {
+            "submit": True,
+            "params": {"test": "workerpool"},
+            "files": []
+        }
+        # We might need to wait a bit for RootService to pick up the new spec if we just created it.
+        # But RootService.init() is only called at startup. 
+        # So we should probably assume it was already there or restart?
+        # The user says "创建一次后就会被保存", so it should be there in subsequent runs.
+        
+        resp = self.session.post(f"{self.server_url}/specs/{spec_name}/tasks", json=payload)
+        self.assertEqual(resp.status_code, 200, f"Failed to submit task: {resp.text}")
+        task_id = resp.json()["id"]
+        print(f"\n[Test] Submitted task {task_id} to worker pool")
+
+        # 2. Wait for task to be succeeded
+        max_wait = 60
+        start_time = time.time()
+        succeeded = False
+        print(f"[Test] Polling for task {task_id} state...")
+        while time.time() - start_time < max_wait:
+            resp = self.session.get(f"{self.server_url}/specs/{spec_name}/tasks/{task_id}")
+            if resp.status_code == 200:
+                state = resp.json()["state"]
+                if state == 2: # SUCCEEDED
+                    succeeded = True
+                    break
+                elif state >= 3: # FAILED or ERROR
+                    self.fail(f"Task failed with state {state}")
+            time.sleep(2)
+        
+        self.assertTrue(succeeded, "Timed out waiting for task to succeed in worker pool")
+
+        # 3. Verify output file
+        resp = self.session.get(f"{self.server_url}/specs/{spec_name}/tasks/{task_id}/files/output.txt")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.text.strip(), "Worker Pool Result")
+        print("[Test] Successfully verified worker pool task output.")
+
 if __name__ == "__main__":
     unittest.main()

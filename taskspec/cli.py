@@ -20,12 +20,25 @@ def add_auth_key(path: str, key: str, secret: str = ""):
     AuthService.add_key(auth_file, key, secret)
     print(f"Added auth key: {key} to {auth_file}")
 
+from urllib.parse import urlparse
+
 def start_server(path: str, no_auth: bool = False):
     config_file = os.path.join(path, "config.yml")
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"Config file not found at {config_file}")
     with open(config_file, 'r') as f:
         config = Config(**yaml.safe_load(f), base_dir=path)
+    
+    # Parse base_url
+    if not config.base_url.startswith("http://"):
+        if config.base_url.startswith("https://"):
+            raise ValueError("https is not supported, only http.")
+        raise ValueError("base_url must start with http://")
+    
+    u = urlparse(config.base_url)
+    host = u.hostname or "127.0.0.1"
+    port = u.port or 80
+    base_path = u.path.rstrip('/')
     
     auth_service = None
     if not no_auth:
@@ -37,9 +50,10 @@ def start_server(path: str, no_auth: bool = False):
         auth_service.load()
     
     executor_manager = ExecutorServiceManager(config.executors, config.base_dir)
-    root_service = RootService(config.base_dir, executor_manager)
-    app = make_fastapi_app(base_url=config.server.base_url, root_service=root_service, auth_service=auth_service)
-    uvicorn.run(app, host=config.server.host, port=config.server.port)
+    root_service = RootService(config.base_dir, executor_manager, base_url=config.base_url)
+    app = make_fastapi_app(base_path=base_path, root_service=root_service, auth_service=auth_service)
+    
+    uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":

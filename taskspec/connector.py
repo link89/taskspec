@@ -32,6 +32,9 @@ class Connector:
     async def mkdir(self, path: str, exist_ok: bool=True) -> None:
         raise NotImplementedError
 
+    async def exists(self, path: str) -> bool:
+        raise NotImplementedError
+
     def get_fstream(self, path: str, buffer_size: int=4096) -> AsyncGenerator[bytes, Any]:
         raise NotImplementedError
 
@@ -66,6 +69,9 @@ class LocalConnector(Connector):
 
     async def put(self, src: str, dst: str):
         shutil.copyfile(src, dst)
+
+    async def exists(self, path: str) -> bool:
+        return os.path.exists(path)
 
     async def get_fstream(self, path: str, buffer_size: int = 4096):
         with open(path, 'rb') as f:
@@ -123,6 +129,15 @@ class SshConnector(Connector):
             stdout=result.stdout,
             stderr=result.stderr,
         )
+
+    async def exists(self, path: str) -> bool:
+        conn = await self._get_conn()
+        async with conn.start_sftp_client() as sftp:
+            try:
+                await sftp.stat(path)
+                return True
+            except asyncssh.SFTPError:
+                return False
 
     async def get_fstream(self, path: str, buffer_size: int = 4096):
         conn = await self._get_conn()

@@ -1,4 +1,5 @@
 executor: demo-hpc
-entrypoint: sbatch ./hello-world.sh
+on_demand:
+  entrypoint: sbatch ./hello-world.sh
 files:
   - ./hello-world.sh

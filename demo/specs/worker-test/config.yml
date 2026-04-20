@@ -1,0 +1,7 @@
+executor: demo-hpc
+worker_pool:
+  workers: 1
+  files:
+    - worker.sh
+    - worker.py
+  entrypoint: sbatch ./worker.sh

@@ -5,15 +5,16 @@ import glob
 from typing import Dict
 
 from ..executor import ExecutorServiceManager
-from ..schema import SpecData
+from ..schema import TaskSpec
 from .spec import SpecService
 
 logger = getLogger(__name__)
 
 class RootService:
-    def __init__(self, base_dir: str, executor_mgr: ExecutorServiceManager):
+    def __init__(self, base_dir: str, executor_mgr: ExecutorServiceManager, base_url: str = ""):
         self._base_dir = base_dir
         self._executor_mgr = executor_mgr
+        self._base_url = base_url
         self._spec_services: Dict[str, SpecService] = {}
 
     def init(self) -> None:
@@ -26,8 +27,8 @@ class RootService:
                 spec_dict = yaml.safe_load(f)
 
             # Instantiate TaskSpec in RootService
-            spec = SpecData(**spec_dict)
-            spec.name = spec_name
+            spec_dict['name'] = spec_name
+            spec = TaskSpec(**spec_dict)
             spec_dir = spec.get_dir(self._base_dir)
 
             if not spec.executor:
@@ -36,6 +37,7 @@ class RootService:
 
             executor = self._executor_mgr.get_executor(spec.executor)
             spec_service = SpecService(spec_name, spec_dir, spec, executor)
+            spec_service._base_url = self._base_url
             spec_service.init()
             self._spec_services[spec_name] = spec_service
             logger.info(f"Loaded spec service: {spec_name}")

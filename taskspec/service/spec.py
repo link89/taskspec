@@ -5,31 +5,116 @@ import os
 import uuid
 import glob
 import asyncio
-from typing import Dict, Any, AsyncGenerator, Set
+from typing import Dict, Any, AsyncGenerator, Set, Optional
 
 from ..executor import ExecutorService
-from ..schema import SpecData, TaskInput, TaskData, TaskState
+from ..schema import TaskSpec, TaskInput, TaskData, TaskState
 from ..util import gen_task_id, fset, fget, fdel
 
 logger = getLogger(__name__)
 
 class SpecService:
-    def __init__(self, name: str, dir: str, spec: SpecData, executor: ExecutorService):
+    def __init__(self, name: str, dir: str, spec: TaskSpec, executor: ExecutorService):
         self.name = name
         self.dir = dir
         self._spec = spec
         self._executor = executor
         self._active_tasks: Set[str] = set()
         self._worker_tasks: Set[str] = set()
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._base_url: str = "" # To be set by service/root.py
 
     def init(self) -> None:
         self._load_active_tasks()
         asyncio.create_task(self._poll_loop())
 
+    def get_queue_token(self) -> str:
+        queue_dir = os.path.join(self.dir, "queue")
+        os.makedirs(queue_dir, exist_ok=True)
+        token_file = os.path.join(queue_dir, "token")
+        token = fget(token_file)
+        if not token:
+            token = str(uuid.uuid4())
+            fset(token_file, token)
+        return token.strip()
+
+    async def _manage_workers(self) -> None:
+        if not self._spec.worker_pool:
+            return
+
+        needed = self._spec.worker_pool.workers - len(self._worker_tasks)
+        if needed > 0:
+            logger.info(f"Creating {needed} workers for {self.name}")
+            for _ in range(needed):
+                try:
+                    await self._create_worker()
+                except Exception as e:
+                    logger.error(f"Failed to create worker for {self.name}: {e}")
+
+    async def _create_worker(self) -> TaskData:
+        # Use gen_task_id without idempotent key for new workers
+        worker_id = gen_task_id()
+        worker_dir = self._get_task_dir(worker_id, is_worker=True)
+
+        # prepare local worker directories
+        os.makedirs(worker_dir, exist_ok=True)
+
+        # prepare remote executor directories
+        remote_base_dir = self._executor.connector.get_base_dir()
+
+        now = int(time.time())
+        worker_data = TaskData(
+            id=worker_id,
+            state=TaskState.IDLE,
+            created_at=now,
+            updated_at=now,
+            is_worker=True
+        )
+        worker_prefix = worker_data.get_prefix(self._spec)
+        remote_worker_dir = os.path.join(remote_base_dir, worker_prefix)
+        await self._executor.connector.mkdir(remote_worker_dir, exist_ok=True)
+
+        # copy files to executor (ONLY worker_pool.files as per user's choice)
+        if self._spec.worker_pool:
+            for file in self._spec.worker_pool.files:
+                src_path = file.src
+                dst_path = file.dst or src_path
+                real_src_path = os.path.join(self.dir, src_path)
+                real_dst_path = os.path.join(remote_worker_dir, dst_path)
+                await self._executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
+                await self._executor.connector.put(real_src_path, real_dst_path)
+
+        self._save_task(worker_data)
+
+        # create active file
+        fset(self._get_task_active_file(worker_id, is_worker=True))
+
+        try:
+            # Inject env vars for worker
+            env = {
+                "__TASK_QUEUE_URL": f"{self._base_url}/specs/{self.name}/queue/",
+                "__TASK_QUEUE_TOKEN": self.get_queue_token()
+            }
+            # Runner needs to be aware of these env vars.
+            worker_data = await self._executor.runner.submit(self._spec, worker_data, env=env)
+            if not TaskState.is_terminated(worker_data.state):
+                self._worker_tasks.add(worker_id)
+            else:
+                fdel(self._get_task_active_file(worker_id, is_worker=True))
+        except Exception:
+            worker_data.state = TaskState.ERROR
+            fdel(self._get_task_active_file(worker_id, is_worker=True))
+            raise
+        finally:
+            worker_data.updated_at = int(time.time())
+            self._save_task(worker_data)
+        return worker_data
+
     async def _poll_loop(self) -> None:
         while True:
             try:
                 await self.poll_state()
+                await self._manage_workers()
             except Exception as e:
                 logger.error(f"Error in poll_loop for {self.name}: {e}")
             await asyncio.sleep(self._spec.poll_interval_s)
@@ -108,21 +193,64 @@ class SpecService:
         fset(self._get_task_active_file(task_id, is_worker=False))
 
         if task_input.submit:
-            try:
-                task_data = await self._executor.runner.submit(self._spec, task_data)
-                if not TaskState.is_terminated(task_data.state):
-                    self._active_tasks.add(task_id)
-                else:
-                    # if terminated immediately, remove active file
+            if self._spec.worker_pool:
+                # Submit to queue in worker_pool mode
+                await self.submit_to_queue(task_id)
+            else:
+                # Current on-demand mode
+                try:
+                    task_data = await self._executor.runner.submit(self._spec, task_data)
+                    if not TaskState.is_terminated(task_data.state):
+                        self._active_tasks.add(task_id)
+                    else:
+                        # if terminated immediately, remove active file
+                        fdel(self._get_task_active_file(task_id, is_worker=False))
+                except Exception:
+                    task_data.state = TaskState.ERROR
                     fdel(self._get_task_active_file(task_id, is_worker=False))
-            except Exception:
-                task_data.state = TaskState.ERROR
-                fdel(self._get_task_active_file(task_id, is_worker=False))
-                raise
-            finally:
-                task_data.updated_at = int(time.time())
-                self._save_task(task_data)
+                    raise
+                finally:
+                    task_data.updated_at = int(time.time())
+                    self._save_task(task_data)
         return task_data
+
+    async def submit_to_queue(self, task_id: str) -> None:
+        task_dir = self._get_task_dir(task_id, is_worker=False)
+        meta_dir = os.path.join(task_dir, self._spec.meta_dir)
+        fset(os.path.join(meta_dir, "qstate"), "enqueue")
+        await self._queue.put(task_id)
+        logger.info(f"Task {task_id} submitted to queue")
+
+    async def get_from_queue(self, wait_s: int = 30) -> Optional[Dict[str, str]]:
+        try:
+            task_id = await asyncio.wait_for(self._queue.get(), timeout=wait_s)
+        except asyncio.TimeoutError:
+            return None
+
+        task_data = self.get_task(task_id, is_worker=False)
+        task_dir = self._get_task_dir(task_id, is_worker=False)
+        meta_dir = os.path.join(task_dir, self._spec.meta_dir)
+        fset(os.path.join(meta_dir, "qstate"), "dequeue")
+
+        remote_base_dir = self._executor.connector.get_base_dir()
+        remote_task_dir = os.path.join(remote_base_dir, task_data.get_prefix(self._spec))
+
+        return {
+            "id": task_id,
+            "task_dir": remote_task_dir
+        }
+
+    async def complete_task(self, task_id: str, state: str) -> None:
+        task_data = self.get_task(task_id, is_worker=False)
+        if state == "ok":
+            task_data.state = TaskState.SUCCEEDED
+        else:
+            task_data.state = TaskState.FAILED
+
+        task_data.updated_at = int(time.time())
+        self._save_task(task_data)
+        fdel(self._get_task_active_file(task_id, is_worker=False))
+        logger.info(f"Task {task_id} completed with state {state}")
 
     def get_task(self, task_id: str, is_worker: bool = False) -> TaskData:
         task_data_file = self._get_task_data_file(task_id, is_worker)
@@ -142,7 +270,7 @@ class SpecService:
             task_input = json.load(f)
         return TaskInput(**task_input)
 
-    def get_task_file(self, task_id: str, file_path: str, is_worker: bool = False) -> AsyncGenerator[bytes, Any]:
+    async def get_task_file(self, task_id: str, file_path: str, is_worker: bool = False) -> AsyncGenerator[bytes, Any]:
         task_data = self.get_task(task_id, is_worker)
         file_path = os.path.normpath(file_path)
         remote_base_dir = self._executor.connector.get_base_dir()
@@ -151,6 +279,10 @@ class SpecService:
 
         if not remote_file_path.startswith(os.path.normpath(remote_task_dir)):
             raise ValueError(f"Illegal file path: {file_path}")
+
+        if not await self._executor.connector.exists(remote_file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
         return self._executor.connector.get_fstream(remote_file_path)
 
     def _save_task(self, task_data: TaskData) -> None:

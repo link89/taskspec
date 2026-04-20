@@ -4,14 +4,7 @@ from typing import List
 from .executor import ExecutorConfig
 
 
-class ServerConfig(BaseModel):
-    host: str = '127.0.0.1'
-    port: int = 8011
-    base_url: str = ''
-
-
 class Config(BaseModel):
     base_dir: str
     executors: List[ExecutorConfig]
-    server: ServerConfig = ServerConfig()
-
+    base_url: str = 'http://127.0.0.1:8011'
