@@ -9,7 +9,7 @@ from typing import Dict, Any, AsyncGenerator, Set
 
 from ..executor import ExecutorService
 from ..schema import SpecData, TaskInput, TaskData, TaskState
-from ..util import gen_task_id
+from ..util import gen_task_id, fset, fget, fdel
 
 logger = getLogger(__name__)
 
@@ -54,6 +54,8 @@ class SpecService:
                 if TaskState.is_terminated(new_state):
                     self._active_tasks.remove(task_id)
                     logger.info(f"Task {task_id} finished, removed from unfinished_tasks")
+                    # remove active file
+                    fdel(self._get_task_active_file(task_id))
             except Exception as e:
                 logger.error(f"Failed to poll state for task {task_id}: {e}")
 
@@ -95,13 +97,21 @@ class SpecService:
 
         self._save_task_input(task_id, task_input)
         self._save_task(task_data)
+
+        # create active file when task is created
+        fset(self._get_task_active_file(task_id))
+
         if task_input.submit:
             try:
                 task_data = await self._executor.runner.submit(self._spec, task_data)
                 if not TaskState.is_terminated(task_data.state):
                     self._active_tasks.add(task_id)
+                else:
+                    # if terminated immediately, remove active file
+                    fdel(self._get_task_active_file(task_id))
             except Exception:
                 task_data.state = TaskState.ERROR
+                fdel(self._get_task_active_file(task_id))
                 raise
             finally:
                 task_data.updated_at = int(time.time())
@@ -151,19 +161,23 @@ class SpecService:
         tasks_dir = os.path.join(self.dir, 'tasks')
         if not os.path.exists(tasks_dir):
             return
-        # Use glob to find all task directories in nested structure: tasks/??/*
-        pattern = os.path.join(tasks_dir, '??', '*')
-        for task_path in glob.glob(pattern):
-            if not os.path.isdir(task_path):
+        # Optimization: Use glob to find all task active files in nested structure: tasks/??/*/active
+        pattern = os.path.join(tasks_dir, '??', '*', self._spec.meta_dir, "active")
+        for active_file_path in glob.glob(pattern):
+            if not os.path.isfile(active_file_path):
                 continue
-            # task_id is the last two parts of the path combined
-            parts = task_path.split(os.sep)
-            # parts[-2] is the first 2 chars, parts[-1] is the rest
-            task_id = parts[-2] + parts[-1]
+            # Parts should be /.../tasks/{aa}/{rest}/{meta_dir}/active
+            parts = active_file_path.split(os.sep)
+            # active file path ends with /tasks/{aa}/{rest}/{meta_dir}/active
+            # So task_id consists of parts[-4] and parts[-3]
+            task_id = parts[-4] + parts[-3]
             try:
                 task_data = self.get_task(task_id)
                 if not TaskState.is_terminated(task_data.state):
                     self._active_tasks.add(task_id)
+                else:
+                    # found terminated but active file still exists, remove it
+                    fdel(active_file_path)
             except Exception as e:
                 logger.warning(f"Failed to load task {task_id}: {e}")
 
@@ -176,3 +190,6 @@ class SpecService:
 
     def _get_task_input_file(self, task_id: str) -> str:
         return os.path.join(self._get_task_dir(task_id), self._spec.meta_dir, "input.json")
+
+    def _get_task_active_file(self, task_id: str) -> str:
+        return os.path.join(self._get_task_dir(task_id), self._spec.meta_dir, "active")
