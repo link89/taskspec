@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 from typing import Optional, List
 from enum import IntEnum
 
@@ -79,9 +79,12 @@ class TaskData(BaseModel):
     created_at: int
     updated_at: int
     slurm_job: Optional[SlurmJobData] = None
+    is_worker: bool = Field(default=False, exclude=True)
 
     def get_dir(self, spec_dir: str) -> str:
-        return os.path.normpath(os.path.join(spec_dir, 'tasks', self.id[:2], self.id[2:]))
+        base = 'workers' if self.is_worker else 'tasks'
+        return os.path.normpath(os.path.join(spec_dir, base, self.id[:2], self.id[2:]))
 
     def get_prefix(self, spec: 'SpecData') -> str:
-        return f'specs/{spec.name}/tasks/{self.id[:2]}/{self.id[2:]}'
+        base = 'workers' if self.is_worker else 'tasks'
+        return f'specs/{spec.name}/{base}/{self.id[:2]}/{self.id[2:]}'
