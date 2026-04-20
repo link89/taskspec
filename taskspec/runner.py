@@ -64,13 +64,17 @@ class SlurmRunner(Runner):
         base_dir = self._connector.get_base_dir()
         task_dir = os.path.join(base_dir, task.get_prefix(spec))
 
-        # Submit job
-        entrypoint = spec.on_demand.entrypoint if spec.on_demand else spec.worker_pool.entrypoint
-        
+        if spec.on_demand:
+            entrypoint = spec.on_demand.entrypoint
+        elif spec.worker_pool:
+            entrypoint = spec.worker_pool.entrypoint
+        else:
+            raise ValueError("Spec must have either on_demand or worker_pool")
+
         env_str = ""
         if env:
             env_str = " ".join([f"{k}={quote(v)}" for k, v in env.items()]) + " "
-        
+
         cmd = f"cd {task_dir} && {env_str}{entrypoint}"
         result = await self._connector.shell(cmd)
         if result.returncode != 0:
