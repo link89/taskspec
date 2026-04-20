@@ -21,7 +21,6 @@ logger = getLogger(__name__)
 
 
 class SlurmConfig(BaseModel):
-    sbatch: str = "sbatch"
     squeue: str = "squeue"
     scancel: str = "scancel"
 
@@ -71,15 +70,9 @@ class SlurmRunner(Runner):
     async def submit(self, spec: SpecData, task: TaskData):
         base_dir = self._connector.get_base_dir()
         task_dir = os.path.join(base_dir, task.get_prefix(spec))
-        entrypoint = spec.entrypoint
-
-        # Verify entrypoint exists
-        result = await self._connector.shell(f'cd {task_dir} && test -f {quote(entrypoint)}')
-        if result.returncode != 0:
-            raise FileNotFoundError(f"Not a file: {entrypoint}")
 
         # Submit job
-        cmd = f"cd {task_dir} && {self.config.sbatch} {quote(entrypoint)}"
+        cmd = f"cd {task_dir} && {spec.entrypoint}"
         result = await self._connector.shell(cmd)
         if result.returncode != 0:
             raise ValueError(f"Failed to submit job: {result.stderr}")
