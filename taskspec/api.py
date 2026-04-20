@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import FastAPI, APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from .schema import  TaskInput
@@ -32,7 +33,9 @@ class Controller:
         return {"status": "ok"}
 
 
-def make_fastapi_app(base_url: str, root_service: RootService, auth_service: AuthService = None) -> FastAPI:
+def make_fastapi_app(base_url: str,
+                     root_service: RootService,
+                     auth_service: Optional[AuthService] = None) -> FastAPI:
     controller = Controller(root_service=root_service)
 
     async def verify_auth(
@@ -40,14 +43,14 @@ def make_fastapi_app(base_url: str, root_service: RootService, auth_service: Aut
     ):
         if auth_service is None:
             return
-        
+
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Authentication required")
-        
+
         token = authorization[len("Bearer "):]
         if ":" not in token:
             raise HTTPException(status_code=401, detail="Invalid token format")
-        
+
         key, secret = token.split(":", 1)
         if not auth_service.verify(key, secret):
             raise HTTPException(status_code=403, detail="Invalid authentication credentials")
