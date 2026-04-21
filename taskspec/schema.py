@@ -39,7 +39,7 @@ class OnDemand(BaseModel):
 
 
 class WorkerPool(BaseModel):
-    workers: int
+    min_workers: int
     files: List[InFile] = []
     entrypoint: str
 

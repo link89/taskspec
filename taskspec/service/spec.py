@@ -43,7 +43,7 @@ class SpecService:
         if not self._spec.worker_pool:
             return
 
-        needed = self._spec.worker_pool.workers - len(self._worker_tasks)
+        needed = self._spec.worker_pool.min_workers - len(self._worker_tasks)
         if needed > 0:
             logger.info(f"Creating {needed} workers for {self.name}")
             for _ in range(needed):

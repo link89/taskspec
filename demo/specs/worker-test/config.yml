@@ -1,6 +1,6 @@
 executor: demo-hpc
 worker_pool:
-  workers: 1
+  min_workers: 1
   files:
     - worker.sh
     - worker.py
