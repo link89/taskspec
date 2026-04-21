@@ -1,7 +1,6 @@
 import os
 import time
 import requests
-import json
 
 def worker():
     url = os.environ.get("__TASK_QUEUE_URL")
@@ -11,10 +10,15 @@ def worker():
     assert url and token, "Worker requires __TASK_QUEUE_URL and __TASK_QUEUE_TOKEN environment variables"
 
     print(f"Worker started with URL: {url}")
+    session = requests.Session()
+    session.headers.update({"Authorization": f"Bearer {token}"})
+    if proxies:
+        session.proxies.update(proxies)
+
     while True:
         try:
             print(f"Worker polling for tasks...")
-            resp = requests.get(url, headers={"Authorization": f"Bearer {token}"}, params={"wait": 5}, proxies=proxies)
+            resp = session.get(url, params={"wait": 5})
             print(f"Worker received response: {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
@@ -27,7 +31,7 @@ def worker():
                 # Write .STATE file for on-demand compatibility if queried
                 with open(os.path.join(task_dir, ".STATE"), "w") as f:
                     f.write("OK")
-                requests.delete(f"{url}tasks/{task_id}", headers={"Authorization": f"Bearer {token}"}, params={"state": "ok"})
+                session.delete(f"{url}tasks/{task_id}", params={"state": "ok"})
                 print(f"Completed task {task_id}")
             elif resp.status_code == 204:
                 continue
