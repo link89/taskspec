@@ -238,7 +238,7 @@ class SpecService:
 
         return {
             "id": task_id,
-            "task_dir": remote_task_dir
+            "full_task_dir": await self._executor.connector.get_abs_path(remote_task_dir)
         }
 
     async def complete_task(self, task_id: str, state: str) -> None:

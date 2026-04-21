@@ -19,7 +19,7 @@ def worker():
             if resp.status_code == 200:
                 data = resp.json()
                 task_id = data["id"]
-                task_dir = data["task_dir"]
+                task_dir = data["full_task_dir"]
                 print(f"Pulled task {task_id}")
                 output_path = os.path.join(task_dir, "output.txt")
                 with open(output_path, "w") as f:
