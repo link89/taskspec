@@ -14,8 +14,28 @@ import os
 CmdResult = namedtuple("CmdResult", ["returncode", "stdout", "stderr"])
 
 class Connector:
+    def __init__(self) -> None:
+        self._pwd: Optional[str] = None
+
     def get_base_dir(self) -> str:
         raise NotImplementedError
+
+    async def pwd(self) -> str:
+        if self._pwd is not None:
+            return self._pwd
+
+        result = await self.shell('pwd')
+        if result.returncode != 0:
+            raise ValueError(f"Failed to get pwd: {result.stderr}")
+
+        stdout = result.stdout.decode() if isinstance(result.stdout, bytes) else result.stdout
+        self._pwd = os.path.normpath(stdout.strip())
+        return self._pwd
+
+    async def get_abs_path(self, path: str) -> str:
+        if os.path.isabs(path):
+            return os.path.normpath(path)
+        return os.path.normpath(os.path.join(await self.pwd(), path))
 
     async def dump_text(self, text: str, path: str, encoding='utf-8') -> None:
         raise NotImplementedError
@@ -41,6 +61,7 @@ class Connector:
 
 class LocalConnector(Connector):
     def __init__(self, base_dir: str) -> None:
+        super().__init__()
         self._base_dir = os.path.normpath(base_dir)
 
     async def mkdir(self, path: str, exist_ok: bool=True):
@@ -94,11 +115,12 @@ class SshConfig(BaseModel):
 
 class SshConnector(Connector):
     def __init__(self, config: SshConfig):
+        super().__init__()
         self.config = config
         self._conn: Optional[SSHClientConnection] = None
 
     def get_base_dir(self):
-        return  os.path.normpath(self.config.base_dir)
+        return os.path.normpath(self.config.base_dir)
 
     async def mkdir(self, path: str, exist_ok: bool=True) -> None:
         cmd = f'mkdir {"-p" if exist_ok else ""} {shlex.quote(path)}'
