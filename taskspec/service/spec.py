@@ -53,63 +53,8 @@ class SpecService:
                     logger.error(f"Failed to create worker for {self.name}: {e}")
 
     async def _create_worker(self) -> TaskData:
-        # Use gen_task_id without idempotent key for new workers
-        worker_id = gen_task_id()
-        worker_dir = self._get_task_dir(worker_id, is_worker=True)
-
-        # prepare local worker directories
-        os.makedirs(worker_dir, exist_ok=True)
-
-        # prepare remote executor directories
-        remote_base_dir = self._executor.connector.get_base_dir()
-
-        now = int(time.time())
-        worker_data = TaskData(
-            id=worker_id,
-            state=TaskState.IDLE,
-            created_at=now,
-            updated_at=now,
-            is_worker=True
-        )
-        worker_prefix = worker_data.get_prefix(self._spec)
-        remote_worker_dir = os.path.join(remote_base_dir, worker_prefix)
-        await self._executor.connector.mkdir(remote_worker_dir, exist_ok=True)
-
-        # copy files to executor (ONLY worker_pool.files as per user's choice)
-        if self._spec.worker_pool:
-            for file in self._spec.worker_pool.files:
-                src_path = file.src
-                dst_path = file.dst or src_path
-                real_src_path = os.path.join(self.dir, src_path)
-                real_dst_path = os.path.join(remote_worker_dir, dst_path)
-                await self._executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
-                await self._executor.connector.put(real_src_path, real_dst_path)
-
-        self._save_task(worker_data)
-
-        # create active file
-        fset(self._get_task_active_file(worker_id, is_worker=True))
-
-        try:
-            # Inject env vars for worker
-            env = {
-                "__TASK_QUEUE_URL": f"{self._public_url}/specs/{self.name}/queue/",
-                "__TASK_QUEUE_TOKEN": self.get_queue_token()
-            }
-            # Runner needs to be aware of these env vars.
-            worker_data = await self._executor.runner.submit(self._spec, worker_data, env=env)
-            if not TaskState.is_terminated(worker_data.state):
-                self._worker_tasks.add(worker_id)
-            else:
-                fdel(self._get_task_active_file(worker_id, is_worker=True))
-        except Exception:
-            worker_data.state = TaskState.ERROR
-            fdel(self._get_task_active_file(worker_id, is_worker=True))
-            raise
-        finally:
-            worker_data.updated_at = int(time.time())
-            self._save_task(worker_data)
-        return worker_data
+        worker_input = TaskInput(submit=True)
+        return await self.create_task(worker_input, is_worker=True)
 
     async def _poll_loop(self) -> None:
         while True:
@@ -150,9 +95,9 @@ class SpecService:
             except Exception as e:
                 logger.error(f"Failed to poll state for {'worker' if is_worker else 'task'} {task_id}: {e}")
 
-    async def create_task(self, task_input: TaskInput) -> TaskData:
+    async def create_task(self, task_input: TaskInput, is_worker: bool = False) -> TaskData:
         task_id = gen_task_id(task_input.idempotent_key)
-        task_dir = self._get_task_dir(task_id, is_worker=False)
+        task_dir = self._get_task_dir(task_id, is_worker=is_worker)
 
         # prepare local task directories
         os.makedirs(task_dir, exist_ok=True)
@@ -166,14 +111,18 @@ class SpecService:
             state=TaskState.IDLE,
             created_at=now,
             updated_at=now,
-            is_worker=False
+            is_worker=is_worker
         )
         task_prefix = task_data.get_prefix(self._spec)
         remote_task_dir = os.path.join(remote_base_dir, task_prefix)
         await self._executor.connector.mkdir(remote_task_dir, exist_ok=True)
 
         # copy files to executor
-        for file in self._spec.files:
+        input_files = self._spec.files
+        if is_worker and self._spec.worker_pool:
+            input_files = self._spec.worker_pool.files
+
+        for file in input_files:
             src_path = file.src
             dst_path = file.dst or src_path
             real_src_path = os.path.join(self.dir, src_path)
@@ -187,28 +136,37 @@ class SpecService:
             await self._executor.connector.mkdir(os.path.dirname(real_dst_path), exist_ok=True)
             await self._executor.connector.dump_text(file_data.content, real_dst_path)
 
-        self._save_task_input(task_id, task_input, is_worker=False)
+        self._save_task_input(task_id, task_input, is_worker=is_worker)
         self._save_task(task_data)
 
         # create active file when task is created
-        fset(self._get_task_active_file(task_id, is_worker=False))
+        fset(self._get_task_active_file(task_id, is_worker=is_worker))
 
         if task_input.submit:
-            if self._spec.worker_pool:
+            if self._spec.worker_pool and not is_worker:
                 # Submit to queue in worker_pool mode
                 await self.submit_to_queue(task_id)
             else:
                 # Current on-demand mode
                 try:
-                    task_data = await self._executor.runner.submit(self._spec, task_data)
+                    env = None
+                    if is_worker:
+                        env = {
+                            "__TASK_QUEUE_URL": f"{self._public_url}/specs/{self.name}/queue/",
+                            "__TASK_QUEUE_TOKEN": self.get_queue_token()
+                        }
+                    task_data = await self._executor.runner.submit(self._spec, task_data, env=env)
                     if not TaskState.is_terminated(task_data.state):
-                        self._active_tasks.add(task_id)
+                        if is_worker:
+                            self._worker_tasks.add(task_id)
+                        else:
+                            self._active_tasks.add(task_id)
                     else:
                         # if terminated immediately, remove active file
-                        fdel(self._get_task_active_file(task_id, is_worker=False))
+                        fdel(self._get_task_active_file(task_id, is_worker=is_worker))
                 except Exception:
                     task_data.state = TaskState.ERROR
-                    fdel(self._get_task_active_file(task_id, is_worker=False))
+                    fdel(self._get_task_active_file(task_id, is_worker=is_worker))
                     raise
                 finally:
                     task_data.updated_at = int(time.time())
