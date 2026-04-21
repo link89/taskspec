@@ -14,7 +14,8 @@ from ..util import gen_task_id, fset, fget, fdel
 logger = getLogger(__name__)
 
 class SpecService:
-    def __init__(self, name: str, dir: str, spec: SpecData, executor: ExecutorService):
+    def __init__(self, name: str, dir: str, spec: SpecData, executor: ExecutorService,
+                 public_url: str):
         self.name = name
         self.dir = dir
         self._spec = spec
@@ -22,7 +23,7 @@ class SpecService:
         self._active_tasks: Set[str] = set()
         self._worker_tasks: Set[str] = set()
         self._queue: asyncio.Queue = asyncio.Queue()
-        self._base_url: str = "" # To be set by service/root.py
+        self._public_url: str = public_url
 
     def init(self) -> None:
         self._load_active_tasks()
@@ -92,7 +93,7 @@ class SpecService:
         try:
             # Inject env vars for worker
             env = {
-                "__TASK_QUEUE_URL": f"{self._base_url}/specs/{self.name}/queue/",
+                "__TASK_QUEUE_URL": f"{self._public_url}/specs/{self.name}/queue/",
                 "__TASK_QUEUE_TOKEN": self.get_queue_token()
             }
             # Runner needs to be aware of these env vars.

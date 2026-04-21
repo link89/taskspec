@@ -28,18 +28,17 @@ def start_server(path: str, no_auth: bool = False):
         raise FileNotFoundError(f"Config file not found at {config_file}")
     with open(config_file, 'r') as f:
         config = Config(**yaml.safe_load(f), base_dir=path)
-    
-    # Parse base_url
-    if not config.base_url.startswith("http://"):
-        if config.base_url.startswith("https://"):
-            raise ValueError("https is not supported, only http.")
-        raise ValueError("base_url must start with http://")
-    
-    u = urlparse(config.base_url)
-    host = u.hostname or "127.0.0.1"
-    port = u.port or 80
+
+    u = urlparse(config.server_url)
+    host = u.hostname
+    port = u.port
     base_path = u.path.rstrip('/')
-    
+    if u.scheme != 'http':
+        raise ValueError(f"Unsupported URL scheme: {u.scheme}. Only http is supported.")
+    if not host or not port:
+        raise ValueError(f"Invalid server URL: {config.server_url}")
+    public_url = config.public_url or config.server_url
+
     auth_service = None
     if not no_auth:
         auth_file = os.path.join(path, "auth.jsonl")
@@ -48,11 +47,11 @@ def start_server(path: str, no_auth: bool = False):
             return
         auth_service = AuthService(auth_file)
         auth_service.load()
-    
+
     executor_manager = ExecutorServiceManager(config.executors, config.base_dir)
-    root_service = RootService(config.base_dir, executor_manager, base_url=config.base_url)
+    root_service = RootService(config.base_dir, executor_manager, public_url=public_url)
     app = make_fastapi_app(base_path=base_path, root_service=root_service, auth_service=auth_service)
-    
+
     uvicorn.run(app, host=host, port=port)
 
 

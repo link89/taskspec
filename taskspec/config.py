@@ -7,4 +7,5 @@ from .executor import ExecutorConfig
 class Config(BaseModel):
     base_dir: str
     executors: List[ExecutorConfig]
-    base_url: str = 'http://127.0.0.1:8011'
+    server_url: str = 'http://127.0.0.1:8011'
+    public_url: str = ''

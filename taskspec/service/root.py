@@ -11,10 +11,10 @@ from .spec import SpecService
 logger = getLogger(__name__)
 
 class RootService:
-    def __init__(self, base_dir: str, executor_mgr: ExecutorServiceManager, base_url: str = ""):
+    def __init__(self, base_dir: str, executor_mgr: ExecutorServiceManager, public_url: str):
         self._base_dir = base_dir
         self._executor_mgr = executor_mgr
-        self._base_url = base_url
+        self._public_url = public_url
         self._spec_services: Dict[str, SpecService] = {}
 
     def init(self) -> None:
@@ -36,8 +36,8 @@ class RootService:
                 continue
 
             executor = self._executor_mgr.get_executor(spec.executor)
-            spec_service = SpecService(spec_name, spec_dir, spec, executor)
-            spec_service._base_url = self._base_url
+            spec_service = SpecService(spec_name, spec_dir, spec, executor,
+                                       public_url=self._public_url)
             spec_service.init()
             self._spec_services[spec_name] = spec_service
             logger.info(f"Loaded spec service: {spec_name}")

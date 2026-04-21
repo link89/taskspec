@@ -7,6 +7,5 @@ executors:
     runner:
       slurm: {}
 
-server:
-  host: 127.0.0.1
-  port: 8011
+server_url: http://127.0.0.1:8011
+public_url: http://10.26.14.77:9009
