@@ -96,7 +96,6 @@ class TaskState(IntEnum):
 
 class TaskInput(BaseModel):
     idempotent_key: str = ''
-    params: dict = {}
     files: List[FileData] = []
     submit: bool = True
 

@@ -97,7 +97,6 @@ class TestTaskSpecE2E(unittest.TestCase):
         # 1. Submit a task with additional files
         payload = {
             "submit": True,
-            "params": {"test": "data"},
             "files": [
                 {"name": "input_file.txt", "content": "this is input file content"}
             ]
@@ -182,7 +181,6 @@ class TestTaskSpecE2E(unittest.TestCase):
 
         payload = {
             "submit": True,
-            "params": {"test": "workerpool"},
             "files": []
         }
         # We might need to wait a bit for RootService to pick up the new spec if we just created it.
