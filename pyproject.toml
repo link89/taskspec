@@ -1,6 +1,6 @@
 [project]
 name = "taskspec"
-version = "0.0.1.dev0"
+version = "0.0.1"
 description = "A tasks execution service for Python."
 authors = [
     {name = "weihong.xu",email = "xuweihong.cn@gmail.com"}
