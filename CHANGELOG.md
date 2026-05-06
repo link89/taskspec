@@ -1,5 +1,8 @@
 # Change Log
 
+## v0.0.2
+- add command line entry
+
 ## v0.0.1
 
 ### Features
