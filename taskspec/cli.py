@@ -2,6 +2,7 @@ import os
 import yaml
 import uvicorn
 import logging
+import fire
 
 from .config import Config
 from .api import make_fastapi_app
@@ -55,6 +56,9 @@ def start_server(path: str, no_auth: bool = False):
     uvicorn.run(app, host=host, port=port)
 
 
+def main():
+    fire.Fire({"start_server": start_server, "add_auth_key": add_auth_key})
+
+
 if __name__ == "__main__":
-    from fire import Fire
-    Fire({"start_server": start_server, "add_auth_key": add_auth_key})
+    main()
