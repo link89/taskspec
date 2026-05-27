@@ -89,9 +89,11 @@ class SpecService:
             requested = 1 if result else 0
         elif isinstance(result, int):
             requested = result
+        elif isinstance(result, float):
+            requested = round(result)
         else:
             logger.error(
-                f"scale_up_condition for {self.name} must return bool or int, got {type(result).__name__}"
+                f"scale_up_condition for {self.name} must return bool, int, or float, got {type(result).__name__}"
             )
             return 0
 
