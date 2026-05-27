@@ -1,5 +1,10 @@
 # Change Log
 
+## v0.0.3
+- support elastic scale up
+- support read file with offset
+
+
 ## v0.0.2
 - add command line entry
 
