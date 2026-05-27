@@ -12,6 +12,7 @@ from .executor import ExecutorServiceManager
 from .util import gen_task_id
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("asyncssh").setLevel(logging.WARNING)
 
 def add_auth_key(path: str, key: str, secret: str = ""):
     auth_file = os.path.join(path, "auth.jsonl")
