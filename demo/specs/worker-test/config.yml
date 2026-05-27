@@ -1,6 +1,9 @@
 executor: demo-hpc
 worker_pool:
   min_workers: 1
+  max_workers: 4
+  scale_up_condition: q_size > w_active
+  stat_window_s: 60
   files:
     - worker.sh
     - worker.py

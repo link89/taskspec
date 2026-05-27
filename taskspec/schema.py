@@ -40,8 +40,21 @@ class OnDemand(BaseModel):
 
 class WorkerPool(BaseModel):
     min_workers: int
+    max_workers: Optional[int] = None
+    scale_up_condition: str = "q_size > 0"
+    stat_window_s: int = 60
     files: List[InFile] = []
     entrypoint: str
+
+    @model_validator(mode='after')
+    def validate_scaling(self):
+        if self.max_workers is None:
+            self.max_workers = self.min_workers
+        if self.max_workers < self.min_workers:
+            raise ValueError("max_workers must be >= min_workers")
+        if self.stat_window_s <= 0:
+            raise ValueError("stat_window_s must be > 0")
+        return self
 
     @field_validator('files', mode='before')
     @classmethod

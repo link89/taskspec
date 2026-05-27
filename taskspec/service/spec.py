@@ -5,7 +5,8 @@ import os
 import uuid
 import glob
 import asyncio
-from typing import Dict, Any, AsyncGenerator, Set, Optional
+from collections import deque
+from typing import Dict, Any, AsyncGenerator, Set, Optional, Deque
 
 from ..executor import ExecutorService
 from ..schema import SpecData, TaskInput, TaskData, TaskState
@@ -23,6 +24,9 @@ class SpecService:
         self._active_tasks: Set[str] = set()
         self._worker_tasks: Set[str] = set()
         self._queue: asyncio.Queue = asyncio.Queue()
+        self._queued_at: Dict[str, float] = {}
+        self._enqueue_events: Deque[float] = deque()
+        self._dequeue_events: Deque[float] = deque()
         self._public_url: str = public_url
 
     def init(self) -> None:
@@ -43,14 +47,83 @@ class SpecService:
         if not self._spec.worker_pool:
             return
 
-        needed = self._spec.worker_pool.min_workers - len(self._worker_tasks)
+        pool = self._spec.worker_pool
+        current_workers = len(self._worker_tasks)
+        needed = pool.min_workers - current_workers
         if needed > 0:
             logger.info(f"Creating {needed} workers for {self.name}")
             for _ in range(needed):
-                try:
-                    await self._create_worker()
-                except Exception as e:
-                    logger.error(f"Failed to create worker for {self.name}: {e}")
+                await self._create_worker_safe()
+            return
+
+        scale_up_by = self._get_scale_up_count(current_workers)
+        if scale_up_by <= 0:
+            return
+
+        logger.info(f"Scaling up {scale_up_by} workers for {self.name}")
+        for _ in range(scale_up_by):
+            await self._create_worker_safe()
+
+    async def _create_worker_safe(self) -> None:
+        try:
+            await self._create_worker()
+        except Exception as e:
+            logger.error(f"Failed to create worker for {self.name}: {e}")
+
+    def _get_scale_up_count(self, current_workers: int) -> int:
+        pool = self._spec.worker_pool
+        if not pool:
+            return 0
+        max_workers = pool.max_workers if pool.max_workers is not None else pool.min_workers
+        if current_workers >= max_workers:
+            return 0
+
+        stats = self._get_scaling_stats()
+        try:
+            result = eval(pool.scale_up_condition, {"__builtins__": {}}, stats)
+        except Exception as e:
+            logger.error(f"Failed to evaluate scale_up_condition for {self.name}: {e}")
+            return 0
+
+        if isinstance(result, bool):
+            requested = 1 if result else 0
+        elif isinstance(result, int):
+            requested = result
+        else:
+            logger.error(
+                f"scale_up_condition for {self.name} must return bool or int, got {type(result).__name__}"
+            )
+            return 0
+
+        if requested <= 0:
+            return 0
+
+        return min(requested, max_workers - current_workers)
+
+    def _get_scaling_stats(self) -> Dict[str, Any]:
+        pool = self._spec.worker_pool
+        if not pool:
+            return {}
+
+        now = time.time()
+        self._trim_stat_events(now, pool.stat_window_s)
+        wait_times = [now - queued_at for queued_at in self._queued_at.values()]
+
+        return {
+            "q_size": self._queue.qsize(),
+            "w_active": len(self._worker_tasks),
+            "max_wait": max(wait_times) if wait_times else 0.0,
+            "avg_wait": sum(wait_times) / len(wait_times) if wait_times else 0.0,
+            "in_rate": len(self._enqueue_events) * 60.0 / pool.stat_window_s,
+            "out_rate": len(self._dequeue_events) * 60.0 / pool.stat_window_s,
+        }
+
+    def _trim_stat_events(self, now: float, window_s: int) -> None:
+        cutoff = now - window_s
+        while self._enqueue_events and self._enqueue_events[0] < cutoff:
+            self._enqueue_events.popleft()
+        while self._dequeue_events and self._dequeue_events[0] < cutoff:
+            self._dequeue_events.popleft()
 
     async def _create_worker(self) -> TaskData:
         worker_input = TaskInput(submit=True)
@@ -177,6 +250,9 @@ class SpecService:
         task_dir = self._get_task_dir(task_id, is_worker=False)
         meta_dir = os.path.join(task_dir, self._spec.meta_dir)
         fset(os.path.join(meta_dir, "qstate"), "enqueue")
+        now = time.time()
+        self._queued_at[task_id] = now
+        self._enqueue_events.append(now)
         await self._queue.put(task_id)
         logger.info(f"Task {task_id} submitted to queue")
 
@@ -185,6 +261,9 @@ class SpecService:
             task_id = await asyncio.wait_for(self._queue.get(), timeout=wait_s)
         except asyncio.TimeoutError:
             return None
+
+        self._queued_at.pop(task_id, None)
+        self._dequeue_events.append(time.time())
 
         task_data = self.get_task(task_id, is_worker=False)
         task_dir = self._get_task_dir(task_id, is_worker=False)
