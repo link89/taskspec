@@ -55,7 +55,7 @@ class Connector:
     async def exists(self, path: str) -> bool:
         raise NotImplementedError
 
-    def get_fstream(self, path: str, buffer_size: int=4096) -> AsyncGenerator[bytes, Any]:
+    def get_fstream(self, path: str, buffer_size: int=4096, offset: int = 0) -> AsyncGenerator[bytes, Any]:
         raise NotImplementedError
 
 
@@ -94,8 +94,10 @@ class LocalConnector(Connector):
     async def exists(self, path: str) -> bool:
         return os.path.exists(path)
 
-    async def get_fstream(self, path: str, buffer_size: int = 4096):
+    async def get_fstream(self, path: str, buffer_size: int = 4096, offset: int = 0):
         with open(path, 'rb') as f:
+            if offset > 0:
+                f.seek(offset)
             while True:
                 buffer = f.read(buffer_size)
                 if not buffer:
@@ -161,10 +163,12 @@ class SshConnector(Connector):
             except asyncssh.SFTPError:
                 return False
 
-    async def get_fstream(self, path: str, buffer_size: int = 4096):
+    async def get_fstream(self, path: str, buffer_size: int = 4096, offset: int = 0):
         conn = await self._get_conn()
         async with conn.start_sftp_client() as sftp:
             async with sftp.open(path, 'rb') as f:
+                if offset > 0:
+                    await f.seek(offset)
                 while True:
                     buffer = await f.read(buffer_size)
                     if not buffer:

@@ -24,9 +24,9 @@ class Controller:
         task_data = await spec_service.create_task(task_input)
         return task_data
 
-    async def get_task_file(self, spec_name: str, task_id: str, file_path: str):
+    async def get_task_file(self, spec_name: str, task_id: str, file_path: str, offset: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)
-        fstream = await spec_service.get_task_file(task_id, file_path)
+        fstream = await spec_service.get_task_file(task_id, file_path, offset=offset)
         return StreamingResponse(fstream)
 
     async def get_from_queue(self, spec_name: str, wait: int = 30):

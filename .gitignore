@@ -209,3 +209,4 @@ __marimo__/
 demo/*/*/tasks/
 demo/*/*/workers/
 demo/*/*/queue/
+.vscode/

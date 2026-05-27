@@ -229,7 +229,7 @@ class SpecService:
             task_input = json.load(f)
         return TaskInput(**task_input)
 
-    async def get_task_file(self, task_id: str, file_path: str, is_worker: bool = False) -> AsyncGenerator[bytes, Any]:
+    async def get_task_file(self, task_id: str, file_path: str, is_worker: bool = False, offset: int = 0) -> AsyncGenerator[bytes, Any]:
         task_data = self.get_task(task_id, is_worker)
         file_path = os.path.normpath(file_path)
         remote_base_dir = self._executor.connector.get_base_dir()
@@ -242,7 +242,7 @@ class SpecService:
         if not await self._executor.connector.exists(remote_file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        return self._executor.connector.get_fstream(remote_file_path)
+        return self._executor.connector.get_fstream(remote_file_path, offset=offset)
 
     def _save_task(self, task_data: TaskData) -> None:
         task_data_file = self._get_task_data_file(task_data.id, task_data.is_worker)
