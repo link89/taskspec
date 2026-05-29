@@ -320,10 +320,7 @@ class SpecService:
         if not remote_file_path.startswith(os.path.normpath(remote_task_dir)):
             raise ValueError(f"Illegal file path: {file_path}")
 
-        if not await self._executor.connector.exists(remote_file_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        return self._executor.connector.get_fstream(remote_file_path, offset=offset)
+        return await self._executor.connector.get_fstream(remote_file_path, offset=offset)
 
     def _save_task(self, task_data: TaskData) -> None:
         task_data_file = self._get_task_data_file(task_data.id, task_data.is_worker)

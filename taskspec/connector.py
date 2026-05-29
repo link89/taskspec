@@ -55,7 +55,7 @@ class Connector:
     async def exists(self, path: str) -> bool:
         raise NotImplementedError
 
-    def get_fstream(self, path: str, buffer_size: int=4096, offset: int = 0) -> AsyncGenerator[bytes, Any]:
+    async def get_fstream(self, path: str, buffer_size: int=4096, offset: int = 0) -> AsyncGenerator[bytes, Any]:
         raise NotImplementedError
 
 
@@ -95,16 +95,21 @@ class LocalConnector(Connector):
         return os.path.exists(path)
 
     async def get_fstream(self, path: str, buffer_size: int = 4096, offset: int = 0):
-        with open(path, 'rb') as f:
-            if offset > 0:
-                f.seek(offset)
-            while True:
-                buffer = f.read(buffer_size)
-                if not buffer:
-                    break
-                yield buffer
-                # FIXME: do I need this?
-                await asyncio.sleep(0)  # Yield control to the event loop
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"File not found: {path}")
+
+        async def stream():
+            with open(path, 'rb') as file_obj:
+                if offset > 0:
+                    file_obj.seek(offset)
+                while True:
+                    buffer = file_obj.read(buffer_size)
+                    if not buffer:
+                        break
+                    yield buffer
+                    await asyncio.sleep(0)
+
+        return stream()
 
     def get_base_dir(self) -> str:
         return self._base_dir
@@ -166,14 +171,21 @@ class SshConnector(Connector):
     async def get_fstream(self, path: str, buffer_size: int = 4096, offset: int = 0):
         conn = await self._get_conn()
         async with conn.start_sftp_client() as sftp:
-            async with sftp.open(path, 'rb') as f:
-                if offset > 0:
-                    await f.seek(offset)
-                while True:
-                    buffer = await f.read(buffer_size)
-                    if not buffer:
-                        break
-                    yield buffer
+            if not await sftp.exists(path):
+                raise FileNotFoundError(f"File not found: {path}")
+
+        async def stream():
+            async with conn.start_sftp_client() as sftp:
+                async with sftp.open(path, 'rb') as file_obj:
+                    if offset > 0:
+                        await file_obj.seek(offset)
+                    while True:
+                        buffer = await file_obj.read(buffer_size)
+                        if not buffer:
+                            break
+                        yield buffer
+
+        return stream()
 
     async def _get_conn(self):
         if self._conn is not None:
