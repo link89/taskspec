@@ -55,6 +55,25 @@ class TestSlurmRunner(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Slurm jobs disappeared from squeue: 42(RUNNING)", "\n".join(logs.output))
 
+    async def test_update_squeue_logs_added_and_changed_jobs(self):
+        connector = DummyConnector(
+            "/remote",
+            [
+                CmdResult(returncode=0, stdout="42|PENDING\n", stderr=""),
+                CmdResult(returncode=0, stdout="42|RUNNING\n44|PENDING\n", stderr=""),
+            ],
+        )
+        runner = SlurmRunner(SlurmConfig(), connector, query_interval_s=0)
+
+        await runner._update_squeue()
+
+        with self.assertLogs("taskspec.runner", level="INFO") as logs:
+            await runner._update_squeue()
+
+        output = "\n".join(logs.output)
+        self.assertIn("Slurm jobs appeared in squeue: 44(PENDING)", output)
+        self.assertIn("Slurm jobs changed in squeue: 42(PENDING->RUNNING)", output)
+
 
 if __name__ == "__main__":
     unittest.main()

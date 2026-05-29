@@ -56,13 +56,34 @@ class SlurmRunner(Runner):
             stdout = result.stdout.decode() if isinstance(result.stdout, bytes) else result.stdout
             data = parse_csv(f"JOBID|STATE\n{stdout}")
             new_squeue_data = {row['JOBID']: row['STATE'] for row in data if 'JOBID' in row and 'STATE' in row}
+            added_job_ids = sorted(set(new_squeue_data) - set(self._squeue_data))
             disappeared_job_ids = sorted(set(self._squeue_data) - set(new_squeue_data))
+            changed_job_ids = sorted(
+                job_id for job_id in set(self._squeue_data) & set(new_squeue_data)
+                if self._squeue_data[job_id] != new_squeue_data[job_id]
+            )
+            if added_job_ids:
+                logger.info(
+                    "Slurm jobs appeared in squeue: %s",
+                    ", ".join(
+                        f"{job_id}({new_squeue_data[job_id]})"
+                        for job_id in added_job_ids
+                    ),
+                )
             if disappeared_job_ids:
                 logger.info(
                     "Slurm jobs disappeared from squeue: %s",
                     ", ".join(
                         f"{job_id}({self._squeue_data[job_id]})"
                         for job_id in disappeared_job_ids
+                    ),
+                )
+            if changed_job_ids:
+                logger.info(
+                    "Slurm jobs changed in squeue: %s",
+                    ", ".join(
+                        f"{job_id}({self._squeue_data[job_id]}->{new_squeue_data[job_id]})"
+                        for job_id in changed_job_ids
                     ),
                 )
             self._squeue_data = new_squeue_data
