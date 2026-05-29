@@ -1,5 +1,8 @@
 # Change Log
 
+## v0.0.6
+- refine logs
+
 ## v0.0.5
 - bugfix: wrong task state of slurm job
 - bugfix: return 404 if file is not found
