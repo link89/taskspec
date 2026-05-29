@@ -55,7 +55,17 @@ class SlurmRunner(Runner):
         if result.returncode == 0:
             stdout = result.stdout.decode() if isinstance(result.stdout, bytes) else result.stdout
             data = parse_csv(f"JOBID|STATE\n{stdout}")
-            self._squeue_data = {row['JOBID']: row['STATE'] for row in data if 'JOBID' in row and 'STATE' in row}
+            new_squeue_data = {row['JOBID']: row['STATE'] for row in data if 'JOBID' in row and 'STATE' in row}
+            disappeared_job_ids = sorted(set(self._squeue_data) - set(new_squeue_data))
+            if disappeared_job_ids:
+                logger.info(
+                    "Slurm jobs disappeared from squeue: %s",
+                    ", ".join(
+                        f"{job_id}({self._squeue_data[job_id]})"
+                        for job_id in disappeared_job_ids
+                    ),
+                )
+            self._squeue_data = new_squeue_data
             self._last_update_ts = now
         else:
             logger.error(f"Failed to run squeue: {result.stderr}")

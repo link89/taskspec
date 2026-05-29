@@ -6,7 +6,7 @@ from taskspec.schema import SpecData, TaskData, TaskState
 
 
 class DummyConnector:
-    def __init__(self, base_dir: str, shell_result: CmdResult):
+    def __init__(self, base_dir: str, shell_result: CmdResult | list[CmdResult]):
         self._base_dir = base_dir
         self._shell_result = shell_result
         self.commands = []
@@ -16,6 +16,8 @@ class DummyConnector:
 
     async def shell(self, cmd: str) -> CmdResult:
         self.commands.append(cmd)
+        if isinstance(self._shell_result, list):
+            return self._shell_result.pop(0)
         return self._shell_result
 
 
@@ -34,7 +36,24 @@ class TestSlurmRunner(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(updated_task.slurm_job.id, "42")
         self.assertEqual(updated_task.slurm_job.state, "PENDING")
         self.assertIn("42", runner._squeue_data)
-        self.assertEqual(runner._squeue_data["42"], "")
+        self.assertEqual(runner._squeue_data["42"], "PENDING")
+
+    async def test_update_squeue_logs_jobs_that_disappear_from_cache(self):
+        connector = DummyConnector(
+            "/remote",
+            [
+                CmdResult(returncode=0, stdout="42|RUNNING\n43|PENDING\n", stderr=""),
+                CmdResult(returncode=0, stdout="43|RUNNING\n", stderr=""),
+            ],
+        )
+        runner = SlurmRunner(SlurmConfig(), connector, query_interval_s=0)
+
+        await runner._update_squeue()
+
+        with self.assertLogs("taskspec.runner", level="INFO") as logs:
+            await runner._update_squeue()
+
+        self.assertIn("Slurm jobs disappeared from squeue: 42(RUNNING)", "\n".join(logs.output))
 
 
 if __name__ == "__main__":
