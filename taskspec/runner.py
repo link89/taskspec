@@ -85,6 +85,7 @@ class SlurmRunner(Runner):
             raise ValueError(f"Failed to parse job id: {result.stdout}, err: {result.stderr}")
 
         logger.info(f'Job submitted: {job_id}')
+        self._squeue_data[job_id] = 'PENDING'
         task.slurm_job = SlurmJobData(id=job_id, state='PENDING')
         return task
 
