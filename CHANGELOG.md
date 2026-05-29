@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.0.5
+- bugfix: wrong task state of slurm job
+- bugfix: return 404 if file is not found
+
 ## v0.0.4
 - refine get_task_file
 - provide constants endpoint
