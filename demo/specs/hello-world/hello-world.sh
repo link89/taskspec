@@ -3,3 +3,4 @@
 #SBATCH -p cpu
 
 echo "Hello, World!" > output.txt
+echo ok > .STATE
