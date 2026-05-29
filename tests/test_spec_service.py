@@ -16,6 +16,21 @@ class DummyConnector:
     def get_base_dir(self) -> str:
         return self._base_dir
 
+    async def mkdir(self, path: str, exist_ok: bool = True):
+        os.makedirs(path, exist_ok=exist_ok)
+
+    async def put(self, src: str, dst: str):
+        with open(src, "rb") as src_handle, open(dst, "wb") as dst_handle:
+            dst_handle.write(src_handle.read())
+
+    async def dump_text(self, text: str, path: str, encoding: str = "utf-8"):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding=encoding) as handle:
+            handle.write(text)
+
+    async def get_abs_path(self, path: str) -> str:
+        return path
+
     async def exists(self, path: str) -> bool:
         raise AssertionError("SpecService.get_task_file should not call connector.exists")
 
@@ -30,9 +45,9 @@ class DummyConnector:
 
 
 class DummyExecutor:
-    def __init__(self, connector: DummyConnector):
+    def __init__(self, connector: DummyConnector, runner=None):
         self.connector = connector
-        self.runner = None
+        self.runner = runner
 
 
 class TestSpecService(unittest.IsolatedAsyncioTestCase):

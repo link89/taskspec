@@ -31,6 +31,12 @@ class SpecService:
 
     def init(self) -> None:
         self._load_active_tasks()
+        logger.info(
+            "Initialized spec %s with %d active tasks and %d active workers",
+            self.name,
+            len(self._active_tasks),
+            len(self._worker_tasks),
+        )
         asyncio.create_task(self._poll_loop())
 
     def get_queue_token(self) -> str:
@@ -160,15 +166,34 @@ class SpecService:
                     task_data.state = new_state
                     task_data.updated_at = int(time.time())
                     self._save_task(task_data)
-                    logger.info(f"{'Worker' if is_worker else 'Task'} {task_id} state changed from {old_state} to {new_state}")
+                    logger.info(
+                        "%s %s in spec %s state changed from %s to %s",
+                        'Worker' if is_worker else 'Task',
+                        task_id,
+                        self.name,
+                        old_state.name,
+                        new_state.name,
+                    )
 
                 if TaskState.is_terminated(new_state):
                     target_set.remove(task_id)
-                    logger.info(f"{'Worker' if is_worker else 'Task'} {task_id} finished, removed from active set")
+                    logger.info(
+                        "%s %s in spec %s reached terminal state %s and was removed from active set",
+                        'Worker' if is_worker else 'Task',
+                        task_id,
+                        self.name,
+                        new_state.name,
+                    )
                     # remove active file
                     fdel(self._get_task_active_file(task_id, is_worker=is_worker))
             except Exception as e:
-                logger.error(f"Failed to poll state for {'worker' if is_worker else 'task'} {task_id}: {e}")
+                logger.error(
+                    "Failed to poll state for %s %s in spec %s: %s",
+                    'worker' if is_worker else 'task',
+                    task_id,
+                    self.name,
+                    e,
+                )
 
     async def create_task(self, task_input: TaskInput, is_worker: bool = False) -> TaskData:
         task_id = gen_task_id(task_input.idempotent_key)
@@ -190,6 +215,14 @@ class SpecService:
         )
         task_prefix = task_data.get_prefix(self._spec)
         remote_task_dir = os.path.join(remote_base_dir, task_prefix)
+        logger.info(
+            "Creating %s %s for spec %s (submit=%s, remote_dir=%s)",
+            'worker' if is_worker else 'task',
+            task_id,
+            self.name,
+            task_input.submit,
+            remote_task_dir,
+        )
         await self._executor.connector.mkdir(remote_task_dir, exist_ok=True)
 
         # copy files to executor
@@ -213,6 +246,14 @@ class SpecService:
 
         self._save_task_input(task_id, task_input, is_worker=is_worker)
         self._save_task(task_data)
+        logger.info(
+            "Prepared %s %s for spec %s with %d copied files and %d generated files",
+            'worker' if is_worker else 'task',
+            task_id,
+            self.name,
+            len(input_files),
+            len(task_input.files),
+        )
 
         # create active file when task is created
         fset(self._get_task_active_file(task_id, is_worker=is_worker))
@@ -220,6 +261,7 @@ class SpecService:
         if task_input.submit:
             if self._spec.worker_pool and not is_worker:
                 # Submit to queue in worker_pool mode
+                logger.info("Submitting task %s for spec %s to worker queue", task_id, self.name)
                 await self.submit_to_queue(task_id)
             else:
                 # Current on-demand mode
@@ -230,18 +272,45 @@ class SpecService:
                             "__TASK_QUEUE_URL": f"{self._public_url}/specs/{self.name}/queue/",
                             "__TASK_QUEUE_TOKEN": self.get_queue_token()
                         }
+                    logger.info(
+                        "Submitting %s %s for spec %s via runner",
+                        'worker' if is_worker else 'task',
+                        task_id,
+                        self.name,
+                    )
                     task_data = await self._executor.runner.submit(self._spec, task_data, env=env)
                     if not TaskState.is_terminated(task_data.state):
                         if is_worker:
                             self._worker_tasks.add(task_id)
                         else:
                             self._active_tasks.add(task_id)
+                        logger.info(
+                            "Tracking %s %s for spec %s in %s set with state %s",
+                            'worker' if is_worker else 'task',
+                            task_id,
+                            self.name,
+                            'worker' if is_worker else 'active',
+                            task_data.state.name,
+                        )
                     else:
                         # if terminated immediately, remove active file
                         fdel(self._get_task_active_file(task_id, is_worker=is_worker))
+                        logger.info(
+                            "%s %s for spec %s terminated immediately with state %s",
+                            'Worker' if is_worker else 'Task',
+                            task_id,
+                            self.name,
+                            task_data.state.name,
+                        )
                 except Exception:
                     task_data.state = TaskState.ERROR
                     fdel(self._get_task_active_file(task_id, is_worker=is_worker))
+                    logger.exception(
+                        "Failed to submit %s %s for spec %s",
+                        'worker' if is_worker else 'task',
+                        task_id,
+                        self.name,
+                    )
                     raise
                 finally:
                     task_data.updated_at = int(time.time())
@@ -256,7 +325,12 @@ class SpecService:
         self._queued_at[task_id] = now
         self._enqueue_events.append(now)
         await self._queue.put(task_id)
-        logger.info(f"Task {task_id} submitted to queue")
+        logger.info(
+            "Task %s submitted to queue for spec %s (queue_size=%d)",
+            task_id,
+            self.name,
+            self._queue.qsize(),
+        )
 
     async def get_from_queue(self, wait_s: int = 30) -> Optional[Dict[str, str]]:
         try:
@@ -274,6 +348,12 @@ class SpecService:
 
         remote_base_dir = self._executor.connector.get_base_dir()
         remote_task_dir = os.path.join(remote_base_dir, task_data.get_prefix(self._spec))
+        logger.info(
+            "Dequeued task %s for spec %s (remaining_queue_size=%d)",
+            task_id,
+            self.name,
+            self._queue.qsize(),
+        )
 
         return {
             "id": task_id,
@@ -290,7 +370,13 @@ class SpecService:
         task_data.updated_at = int(time.time())
         self._save_task(task_data)
         fdel(self._get_task_active_file(task_id, is_worker=False))
-        logger.info(f"Task {task_id} completed with state {state}")
+        logger.info(
+            "Task %s in spec %s completed with reported state %s and final task state %s",
+            task_id,
+            self.name,
+            state,
+            task_data.state.name,
+        )
 
     def get_task(self, task_id: str, is_worker: bool = False) -> TaskData:
         task_data_file = self._get_task_data_file(task_id, is_worker)
