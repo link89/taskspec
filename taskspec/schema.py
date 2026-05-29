@@ -107,6 +107,10 @@ class TaskState(IntEnum):
         return state in (cls.SUCCEEDED, cls.FAILED, cls.ERROR)
 
 
+task_state_to_name = {state.value: state.name for state in TaskState}
+task_name_to_state = {name: state for state, name in task_state_to_name.items()}
+
+
 class TaskInput(BaseModel):
     idempotent_key: str = ''
     files: List[FileData] = []

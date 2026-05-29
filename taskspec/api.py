@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import FastAPI, APIRouter, Depends, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
-from .schema import  TaskInput
+from .schema import TaskInput, task_state_to_name, task_name_to_state
 from .service import RootService
 from .service.auth import AuthService
 
@@ -44,6 +44,12 @@ class Controller:
     async def health(self):
         return {"status": "ok"}
 
+    async def constants(self):
+        return {
+            "task_state_to_name": task_state_to_name,
+            "task_name_to_state": task_name_to_state,
+        }
+
 
 def make_fastapi_app(base_path: str,
                      root_service: RootService,
@@ -81,6 +87,7 @@ def make_fastapi_app(base_path: str,
 
     public_router = APIRouter()
     public_router.add_api_route("/health", endpoint=controller.health, methods=["GET"])
+    public_router.add_api_route("/constants", endpoint=controller.constants, methods=["GET"])
 
     router = APIRouter(dependencies=[Depends(verify_auth)])
     router.add_api_route("/specs/{spec_name}/tasks/{task_id}",
