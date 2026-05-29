@@ -1,5 +1,8 @@
 # Change Log
 
+## v0.0.7
+- refine logs
+
 ## v0.0.6
 - refine logs
 
