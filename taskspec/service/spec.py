@@ -200,6 +200,7 @@ class SpecService:
 
     async def create_task(self, task_input: TaskInput, is_worker: bool = False) -> TaskData:
         task_id = gen_task_id(task_input.idempotent_key)
+        task_type = 'worker' if is_worker else 'task'
         task_dir = self._get_task_dir(task_id, is_worker=is_worker)
 
         # prepare local task directories
@@ -220,7 +221,7 @@ class SpecService:
         remote_task_dir = os.path.join(remote_base_dir, task_prefix)
         logger.info(
             "Creating %s %s for spec %s (submit=%s, remote_dir=%s)",
-            'worker' if is_worker else 'task',
+            task_type,
             task_id,
             self.name,
             task_input.submit,
@@ -251,7 +252,7 @@ class SpecService:
         self._save_task(task_data)
         logger.info(
             "Prepared %s %s for spec %s with %d copied files and %d generated files",
-            'worker' if is_worker else 'task',
+            task_type,
             task_id,
             self.name,
             len(input_files),
@@ -264,7 +265,7 @@ class SpecService:
         if task_input.submit:
             if self._spec.worker_pool and not is_worker:
                 # Submit to queue in worker_pool mode
-                logger.info("Submitting task %s for spec %s to worker queue", task_id, self.name)
+                logger.info("Submitting %s %s for spec %s to worker queue", task_type, task_id, self.name)
                 self._task_done_events[task_id] = asyncio.Event()
                 await self.submit_to_queue(task_id)
             else:
@@ -278,7 +279,7 @@ class SpecService:
                         }
                     logger.info(
                         "Submitting %s %s for spec %s via runner",
-                        'worker' if is_worker else 'task',
+                        task_type,
                         task_id,
                         self.name,
                     )
@@ -291,7 +292,7 @@ class SpecService:
                             self._task_done_events[task_id] = asyncio.Event()
                         logger.info(
                             "Tracking %s %s for spec %s in %s set with state %s",
-                            'worker' if is_worker else 'task',
+                            task_type,
                             task_id,
                             self.name,
                             'worker' if is_worker else 'active',
@@ -302,7 +303,7 @@ class SpecService:
                         fdel(self._get_task_active_file(task_id, is_worker=is_worker))
                         logger.info(
                             "%s %s for spec %s terminated immediately with state %s",
-                            'Worker' if is_worker else 'Task',
+                            task_type.capitalize(),
                             task_id,
                             self.name,
                             task_data.state.name,
@@ -312,7 +313,7 @@ class SpecService:
                     fdel(self._get_task_active_file(task_id, is_worker=is_worker))
                     logger.exception(
                         "Failed to submit %s %s for spec %s",
-                        'worker' if is_worker else 'task',
+                        task_type,
                         task_id,
                         self.name,
                     )
