@@ -104,9 +104,9 @@ class SlurmRunner(Runner):
 
         env_str = ""
         if env:
-            env_str = " ".join([f"{k}={quote(v)}" for k, v in env.items()]) + " "
+            env_str = " ".join([f"{k}={quote(v)}" for k, v in env.items()])
 
-        cmd = f"cd {task_dir} && {env_str}{entrypoint}"
+        cmd = f"cd {task_dir} && {env_str} {entrypoint}"
         result = await self._connector.shell(cmd)
         if result.returncode != 0:
             raise ValueError(f"Failed to submit job: {result.stderr}")
