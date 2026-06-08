@@ -1,5 +1,8 @@
 # Change Log
 
+## v0.0.8
+- support wait for task completion with timeout for get_task endpoint
+
 ## v0.0.7
 - refine logs
 
