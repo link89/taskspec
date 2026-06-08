@@ -11,8 +11,10 @@ class Controller:
     def __init__(self, root_service: RootService):
         self._root_service = root_service
 
-    async def get_task(self, spec_name: str, task_id: str):
+    async def get_task(self, spec_name: str, task_id: str, wait: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)
+        if wait > 0:
+            return await spec_service.wait_for_terminated(task_id, wait_s=wait)
         return spec_service.get_task(task_id)
 
     async def get_task_input(self, spec_name: str, task_id: str):

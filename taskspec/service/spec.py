@@ -28,6 +28,7 @@ class SpecService:
         self._enqueue_events: Deque[float] = deque()
         self._dequeue_events: Deque[float] = deque()
         self._public_url: str = public_url
+        self._task_done_events: Dict[str, asyncio.Event] = {}
 
     def init(self) -> None:
         self._load_active_tasks()
@@ -186,6 +187,8 @@ class SpecService:
                     )
                     # remove active file
                     fdel(self._get_task_active_file(task_id, is_worker=is_worker))
+                    if not is_worker:
+                        self._signal_task_done(task_id)
             except Exception as e:
                 logger.error(
                     "Failed to poll state for %s %s in spec %s: %s",
@@ -262,6 +265,7 @@ class SpecService:
             if self._spec.worker_pool and not is_worker:
                 # Submit to queue in worker_pool mode
                 logger.info("Submitting task %s for spec %s to worker queue", task_id, self.name)
+                self._task_done_events[task_id] = asyncio.Event()
                 await self.submit_to_queue(task_id)
             else:
                 # Current on-demand mode
@@ -284,6 +288,7 @@ class SpecService:
                             self._worker_tasks.add(task_id)
                         else:
                             self._active_tasks.add(task_id)
+                            self._task_done_events[task_id] = asyncio.Event()
                         logger.info(
                             "Tracking %s %s for spec %s in %s set with state %s",
                             'worker' if is_worker else 'task',
@@ -370,6 +375,7 @@ class SpecService:
         task_data.updated_at = int(time.time())
         self._save_task(task_data)
         fdel(self._get_task_active_file(task_id, is_worker=False))
+        self._signal_task_done(task_id)
         logger.info(
             "Task %s in spec %s completed with reported state %s and final task state %s",
             task_id,
@@ -377,6 +383,28 @@ class SpecService:
             state,
             task_data.state.name,
         )
+
+    def _signal_task_done(self, task_id: str) -> None:
+        event = self._task_done_events.pop(task_id, None)
+        if event is not None:
+            event.set()
+
+    async def wait_for_terminated(self, task_id: str, wait_s: float) -> TaskData:
+        task_data = self.get_task(task_id)
+        if TaskState.is_terminated(task_data.state):
+            return task_data
+
+        event = self._task_done_events.get(task_id)
+        if event is None:
+            # Task is active but has no event (shouldn't normally happen); return current state
+            return task_data
+
+        try:
+            await asyncio.wait_for(asyncio.shield(event.wait()), timeout=wait_s)
+        except asyncio.TimeoutError:
+            pass
+
+        return self.get_task(task_id)
 
     def get_task(self, task_id: str, is_worker: bool = False) -> TaskData:
         task_data_file = self._get_task_data_file(task_id, is_worker)
@@ -442,6 +470,8 @@ class SpecService:
                 task_data = self.get_task(task_id, is_worker=is_worker)
                 if not TaskState.is_terminated(task_data.state):
                     target_set.add(task_id)
+                    if not is_worker:
+                        self._task_done_events[task_id] = asyncio.Event()
                 else:
                     # found terminated but active file still exists, remove it
                     fdel(active_file_path)
