@@ -389,22 +389,19 @@ class SpecService:
         if event is not None:
             event.set()
 
-    async def wait_for_terminated(self, task_id: str, wait_s: float) -> TaskData:
+    async def wait_for_terminated(self, task_id: str, wait_s: float) -> None:
         task_data = self.get_task(task_id)
         if TaskState.is_terminated(task_data.state):
-            return task_data
+            return
 
         event = self._task_done_events.get(task_id)
         if event is None:
-            # Task is active but has no event (shouldn't normally happen); return current state
-            return task_data
+            return
 
         try:
             await asyncio.wait_for(asyncio.shield(event.wait()), timeout=wait_s)
         except asyncio.TimeoutError:
             pass
-
-        return self.get_task(task_id)
 
     def get_task(self, task_id: str, is_worker: bool = False) -> TaskData:
         task_data_file = self._get_task_data_file(task_id, is_worker)
@@ -415,6 +412,11 @@ class SpecService:
         data = TaskData(**task_data)
         data.is_worker = is_worker
         return data
+
+    async def get_task_async(self, task_id: str, is_worker: bool = False, wait: float = 0) -> TaskData:
+        if wait > 0:
+            await self.wait_for_terminated(task_id, wait_s=wait)
+        return self.get_task(task_id, is_worker)
 
     def get_task_input(self, task_id: str, is_worker: bool = False) -> TaskInput:
         task_input_file = self._get_task_input_file(task_id, is_worker)
