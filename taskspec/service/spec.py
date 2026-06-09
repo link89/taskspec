@@ -21,13 +21,14 @@ class SpecService:
         self.dir = dir
         self._spec = spec
         self._executor = executor
+        self._public_url: str = public_url
+
         self._active_tasks: Set[str] = set()
         self._worker_tasks: Set[str] = set()
         self._queue: asyncio.Queue = asyncio.Queue()
         self._queued_at: Dict[str, float] = {}
         self._enqueue_events: Deque[float] = deque()
         self._dequeue_events: Deque[float] = deque()
-        self._public_url: str = public_url
         self._task_done_events: Dict[str, asyncio.Event] = {}
 
     def init(self) -> None:
@@ -263,11 +264,13 @@ class SpecService:
         fset(self._get_task_active_file(task_id, is_worker=is_worker))
 
         if task_input.submit:
+            # branch 1: submit a task under worker_pool mode, it will be picked up by workers and executed in worker_pool mode
             if self._spec.worker_pool and not is_worker:
                 # Submit to queue in worker_pool mode
                 logger.info("Submitting %s %s for spec %s to worker queue", task_type, task_id, self.name)
                 self._task_done_events[task_id] = asyncio.Event()
                 await self.submit_to_queue(task_id)
+            # branch 2: submit a task in on-demand mode, it will be executed immediately by runner in on-demand mode. Note that the worker task is always submitted in on-demand mode.
             else:
                 # Current on-demand mode
                 try:
