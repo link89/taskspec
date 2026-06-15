@@ -149,7 +149,8 @@ class SpecService:
             await asyncio.sleep(self._spec.poll_interval_s)
 
     async def poll_state(self) -> None:
-        await self._poll_items(self._active_tasks, is_worker=False)
+        if self._spec.on_demand:
+            await self._poll_items(self._active_tasks, is_worker=False)
         await self._poll_items(self._worker_tasks, is_worker=True)
 
     async def _poll_items(self, target_set: Set[str], is_worker: bool) -> None:
