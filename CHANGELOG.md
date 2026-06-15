@@ -1,5 +1,8 @@
 # Change Log
 
+## v0.0.9
+- don't polling worker pool tasks
+
 ## v0.0.8
 - support wait for task completion with timeout for get_task endpoint
 
