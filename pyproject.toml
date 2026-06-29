@@ -24,3 +24,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 taskspec = "taskspec.cli:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "requests>=2.34.2",
+]
