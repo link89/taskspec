@@ -176,9 +176,8 @@ class SpecService:
                     task.touch()
                     task.save()
                     logger.info(
-                        "%s %s in spec %s state changed from %s to %s",
-                        task.get_kind_name().capitalize(),
-                        task_id,
+                        "%s in spec %s state changed from %s to %s",
+                        task,
                         self.name,
                         old_state.name,
                         new_state.name,
@@ -188,9 +187,8 @@ class SpecService:
                     target_set.remove(task_id)
                     task.deactivate()
                     logger.info(
-                        "%s %s in spec %s reached terminal state %s and was removed from active set",
-                        task.get_kind_name().capitalize(),
-                        task_id,
+                        "%s in spec %s reached terminal state %s and was removed from active set",
+                        task,
                         self.name,
                         new_state.name,
                     )
@@ -198,9 +196,8 @@ class SpecService:
                         self._signal_task_done(task_id)
             except Exception as exc:
                 logger.error(
-                    "Failed to poll state for %s %s in spec %s: %s",
-                    "worker" if kind == TaskKind.WORKER else "task",
-                    task_id,
+                    "Failed to poll state for %s in spec %s: %s",
+                    f"{'worker' if kind == TaskKind.WORKER else 'task'}:{task_id}",
                     self.name,
                     exc,
                 )
@@ -222,9 +219,8 @@ class SpecService:
 
         remote_task_dir = os.path.join(self._executor.connector.get_base_dir(), task.get_prefix())
         logger.info(
-            "Creating %s %s for spec %s (submit=%s, remote_dir=%s)",
-            task_type,
-            task_id,
+            "Creating %s for spec %s (submit=%s, remote_dir=%s)",
+            task,
             self.name,
             task_input.submit,
             remote_task_dir,
@@ -248,9 +244,8 @@ class SpecService:
         task.save()
         task.activate()
         logger.info(
-            "Prepared %s %s for spec %s with %d copied files and %d generated files",
-            task_type,
-            task_id,
+            "Prepared %s for spec %s with %d copied files and %d generated files",
+            task,
             self.name,
             len(task.get_input_files()),
             len(task_input.files),
@@ -258,12 +253,12 @@ class SpecService:
 
         if task_input.submit:
             if self._spec.worker_pool and kind == TaskKind.NORMAL:
-                logger.info("Submitting %s %s for spec %s to worker queue", task_type, task_id, self.name)
+                logger.info("Submitting %s for spec %s to worker queue", task, self.name)
                 self._task_done_events[task_id] = asyncio.Event()
                 await self.submit_to_queue(task_id)
             else:
                 try:
-                    logger.info("Submitting %s %s for spec %s via runner", task_type, task_id, self.name)
+                    logger.info("Submitting %s for spec %s via runner", task, self.name)
                     env = None
                     if kind == TaskKind.WORKER:
                         env = {
@@ -278,26 +273,22 @@ class SpecService:
                             self._active_tasks.add(task_id)
                             self._task_done_events[task_id] = asyncio.Event()
                         logger.info(
-                            "Tracking %s %s for spec %s in %s set with state %s",
-                            task_type,
-                            task_id,
+                            "Tracking %s for spec %s in %s set",
+                            task,
                             self.name,
                             "worker" if kind == TaskKind.WORKER else "active",
-                            task.state.name,
                         )
                     else:
                         task.deactivate()
                         logger.info(
-                            "%s %s for spec %s terminated immediately with state %s",
-                            task_type.capitalize(),
-                            task_id,
+                            "%s for spec %s terminated immediately",
+                            task,
                             self.name,
-                            task.state.name,
                         )
                 except Exception:
                     task.set_state(TaskState.ERROR)
                     task.deactivate()
-                    logger.exception("Failed to submit %s %s for spec %s", task_type, task_id, self.name)
+                    logger.exception("Failed to submit %s for spec %s", task, self.name)
                     raise
                 finally:
                     task.touch()
@@ -312,8 +303,8 @@ class SpecService:
         self._enqueue_events.append(now)
         await self._queue.put(task_id)
         logger.info(
-            "Task %s submitted to queue for spec %s (queue_size=%d)",
-            task_id,
+            "%s submitted to queue for spec %s (queue_size=%d)",
+            task,
             self.name,
             self._queue.qsize(),
         )
@@ -331,8 +322,8 @@ class SpecService:
         task.dequeue()
         remote_task_dir = os.path.join(self._executor.connector.get_base_dir(), task.get_prefix())
         logger.info(
-            "Dequeued task %s for spec %s (remaining_queue_size=%d)",
-            task_id,
+            "Dequeued %s for spec %s (remaining_queue_size=%d)",
+            task,
             self.name,
             self._queue.qsize(),
         )
@@ -349,11 +340,10 @@ class SpecService:
         task.deactivate()
         self._signal_task_done(task_id)
         logger.info(
-            "Task %s in spec %s completed with reported state %s and final task state %s",
-            task_id,
+            "%s in spec %s completed with reported state %s",
+            task,
             self.name,
             state,
-            task.state.name,
         )
 
     def _signal_task_done(self, task_id: str) -> None:

@@ -129,3 +129,6 @@ class Task:
 
     def to_json(self) -> str:
         return json.dumps(self.task_data.model_dump())
+
+    def __str__(self) -> str:
+        return f"Task(kind={self.get_kind_name()}, id={self.id}, state={self.state.name})"
