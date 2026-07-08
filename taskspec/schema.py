@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseModel, field_validator, Field, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional, List, Union
 from enum import IntEnum
 
@@ -111,6 +111,11 @@ task_state_to_name = {state.value: state.name for state in TaskState}
 task_name_to_state = {name: state for state, name in task_state_to_name.items()}
 
 
+class TaskKind(IntEnum):
+    NORMAL = 0
+    WORKER = 1
+
+
 class TaskInput(BaseModel):
     idempotent_key: str = ''
     files: List[FileData] = []
@@ -123,12 +128,3 @@ class TaskData(BaseModel):
     created_at: int
     updated_at: int
     slurm_job: Optional[SlurmJobData] = None
-    is_worker: bool = Field(default=False, exclude=True)
-
-    def get_dir(self, spec_dir: str) -> str:
-        base = 'workers' if self.is_worker else 'tasks'
-        return os.path.normpath(os.path.join(spec_dir, base, self.id[:2], self.id[2:]))
-
-    def get_prefix(self, spec: 'SpecData') -> str:
-        base = 'workers' if self.is_worker else 'tasks'
-        return f'specs/{spec.name}/{base}/{self.id[:2]}/{self.id[2:]}'

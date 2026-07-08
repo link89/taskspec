@@ -2,7 +2,8 @@ import unittest
 
 from taskspec.connector import CmdResult
 from taskspec.runner import SlurmConfig, SlurmRunner
-from taskspec.schema import SpecData, TaskData, TaskState
+from taskspec.schema import SpecData, TaskData, TaskKind, TaskState
+from taskspec.task import Task
 
 
 class DummyConnector:
@@ -22,6 +23,19 @@ class DummyConnector:
 
 
 class TestSlurmRunner(unittest.IsolatedAsyncioTestCase):
+    def _make_task(self, spec: SpecData) -> Task:
+        return Task(
+            TaskData(id="AB1234", state=TaskState.IDLE, created_at=1, updated_at=1),
+            spec,
+            TaskKind.NORMAL,
+            spec_dir="/local",
+            public_url="http://127.0.0.1:8000",
+            queue_token_provider=lambda: "token",
+            save_task_data=lambda task: None,
+            save_task_input=lambda task, task_input: None,
+            load_task_input=lambda task: None,
+        )
+
     async def test_submit_registers_job_in_squeue_cache(self):
         connector = DummyConnector(
             "/remote",
@@ -29,12 +43,13 @@ class TestSlurmRunner(unittest.IsolatedAsyncioTestCase):
         )
         runner = SlurmRunner(SlurmConfig(), connector)
         spec = SpecData(name="demo", executor="slurm", on_demand={"entrypoint": "sbatch run.sh"})
-        task = TaskData(id="AB1234", state=TaskState.IDLE, created_at=1, updated_at=1)
+        task = self._make_task(spec)
 
         updated_task = await runner.submit(spec, task)
 
         self.assertEqual(updated_task.slurm_job.id, "42")
         self.assertEqual(updated_task.slurm_job.state, "PENDING")
+        self.assertEqual(updated_task.state, TaskState.SUBMITTED)
         self.assertIn("42", runner._squeue_data)
         self.assertEqual(runner._squeue_data["42"], "PENDING")
 

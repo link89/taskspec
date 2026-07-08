@@ -1,6 +1,6 @@
 import unittest
 
-from fastapi.testclient import TestClient
+import httpx
 
 from taskspec.api import make_fastapi_app
 
@@ -18,12 +18,12 @@ class DummySpecService:
         raise FileNotFoundError(f"File not found: {file_path}")
 
 
-class TestApi(unittest.TestCase):
-    def test_constants_endpoint_returns_task_state_mappings(self):
+class TestApi(unittest.IsolatedAsyncioTestCase):
+    async def test_constants_endpoint_returns_task_state_mappings(self):
         app = make_fastapi_app("", root_service=DummyRootService())
-        client = TestClient(app)
-
-        response = client.get("/constants")
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get("/constants")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -46,14 +46,14 @@ class TestApi(unittest.TestCase):
             },
         )
 
-    def test_get_task_file_returns_404_for_missing_file(self):
+    async def test_get_task_file_returns_404_for_missing_file(self):
         app = make_fastapi_app("", root_service=DummyRootService())
-        client = TestClient(app)
-
-        response = client.get(
-            "/specs/demo/tasks/task-1/files/output.txt",
-            headers={"Authorization": "Bearer test:key"},
-        )
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.get(
+                "/specs/demo/tasks/task-1/files/output.txt",
+                headers={"Authorization": "Bearer test:key"},
+            )
 
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json(), {"detail": "File not found: output.txt"})

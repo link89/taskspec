@@ -13,7 +13,7 @@ class Controller:
 
     async def get_task(self, spec_name: str, task_id: str, wait: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)
-        return await spec_service.get_task_async(task_id, wait=wait)
+        return (await spec_service.get_task_async(task_id, wait=wait)).task_data
 
     async def get_task_input(self, spec_name: str, task_id: str):
         spec_service = self._root_service.get_spec_service(spec_name)
@@ -21,8 +21,7 @@ class Controller:
 
     async def create_task(self, spec_name: str, task_input: TaskInput):
         spec_service = self._root_service.get_spec_service(spec_name)
-        task_data = await spec_service.create_task(task_input)
-        return task_data
+        return (await spec_service.create_task(task_input)).task_data
 
     async def get_task_file(self, spec_name: str, task_id: str, file_path: str, offset: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)

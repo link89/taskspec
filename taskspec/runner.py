@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List
 from logging import getLogger
 from shlex import quote
 import csv
@@ -7,7 +7,8 @@ import re
 import os
 
 from .connector import Connector
-from .schema import TaskData, SlurmJobData, SpecData, TaskState
+from .schema import SlurmJobData, SpecData, TaskState
+from .task import Task
 
 
 logger = getLogger(__name__)
@@ -23,10 +24,10 @@ class RunnerConfig(BaseModel):
 
 
 class Runner:
-    async def submit(self, spec: SpecData, task: TaskData, env: Optional[Dict[str, str]] = None) -> TaskData:
+    async def submit(self, spec: SpecData, task: Task) -> Task:
         raise NotImplementedError
 
-    async def query_state(self, spec: SpecData, task: TaskData) -> TaskState:
+    async def query_state(self, spec: SpecData, task: Task) -> TaskState:
         raise NotImplementedError
 
 
@@ -91,17 +92,12 @@ class SlurmRunner(Runner):
         else:
             logger.error(f"Failed to run squeue: {result.stderr}")
 
-    async def submit(self, spec: SpecData, task: TaskData, env: Optional[Dict[str, str]] = None):
+    async def submit(self, spec: SpecData, task: Task):
         base_dir = self._connector.get_base_dir()
-        task_dir = os.path.join(base_dir, task.get_prefix(spec))
+        task_dir = os.path.join(base_dir, task.get_prefix())
+        entrypoint = task.get_entrypoint()
 
-        if spec.on_demand:
-            entrypoint = spec.on_demand.entrypoint
-        elif spec.worker_pool:
-            entrypoint = spec.worker_pool.entrypoint
-        else:
-            raise ValueError("Spec must have either on_demand or worker_pool")
-
+        env = task.get_remote_env()
         env_str = ""
         if env:
             env_str = " ".join([f"{k}={quote(v)}" for k, v in env.items()])
@@ -117,10 +113,11 @@ class SlurmRunner(Runner):
 
         logger.info(f'Job submitted: {job_id}')
         self._squeue_data[job_id] = 'PENDING'
-        task.slurm_job = SlurmJobData(id=job_id, state='PENDING')
+        task.set_slurm_job(SlurmJobData(id=job_id, state='PENDING'))
+        task.set_state(TaskState.SUBMITTED)
         return task
 
-    async def query_state(self, spec: SpecData, task: TaskData) -> TaskState:
+    async def query_state(self, spec: SpecData, task: Task) -> TaskState:
         if not task.slurm_job:
             raise ValueError("Task has no associated Slurm job")
 
@@ -133,7 +130,7 @@ class SlurmRunner(Runner):
 
         # Job not in squeue, check state_file
         base_dir = self._connector.get_base_dir()
-        task_dir = os.path.join(base_dir, task.get_prefix(spec))
+        task_dir = os.path.join(base_dir, task.get_prefix())
         state_path = os.path.join(task_dir, spec.state_file)
 
         # Try to read state_file using connector.load_text
