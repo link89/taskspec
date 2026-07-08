@@ -28,15 +28,15 @@ class RootService:
 
             # Instantiate TaskSpec in RootService
             spec_dict['name'] = spec_name
-            spec = SpecData(**spec_dict)
-            spec_dir = spec.get_dir(self._base_dir)
+            spec_data = SpecData(**spec_dict)
+            spec_dir = spec_data.get_dir(self._base_dir)
 
-            if not spec.executor:
+            if not spec_data.executor:
                 logger.warning(f"Spec {spec_name} has no executor defined, skipping")
                 continue
 
-            executor = self._executor_mgr.get_executor(spec.executor)
-            spec_service = SpecService(spec_name, spec_dir, spec, executor,
+            executor = self._executor_mgr.get_executor(spec_data.executor)
+            spec_service = SpecService(spec_name, spec_dir, spec_data, executor,
                                        public_url=self._public_url)
             spec_service.init()
             self._spec_services[spec_name] = spec_service
