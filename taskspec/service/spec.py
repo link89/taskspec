@@ -21,14 +21,14 @@ class SpecService:
     def __init__(
         self,
         name: str,
-        dir: str,
-        spec: SpecData,
+        spec_dir: str,
+        spec_data: SpecData,
         executor: ExecutorService,
         public_url: str,
     ):
         self.name = name
-        self.dir = dir
-        self._spec = spec
+        self.dir = spec_dir
+        self._spec_data = spec_data
         self._executor = executor
         self._public_url = public_url
 
@@ -62,10 +62,10 @@ class SpecService:
         return token.strip()
 
     async def _manage_workers(self) -> None:
-        if not self._spec.worker_pool:
+        if not self._spec_data.worker_pool:
             return
 
-        pool = self._spec.worker_pool
+        pool = self._spec_data.worker_pool
         current_workers = len(self._worker_tasks)
         needed = pool.min_workers - current_workers
         if needed > 0:
@@ -89,7 +89,7 @@ class SpecService:
             logger.error("Failed to create worker for %s: %s", self.name, exc)
 
     def _get_scale_up_count(self, current_workers: int) -> int:
-        pool = self._spec.worker_pool
+        pool = self._spec_data.worker_pool
         if not pool:
             return 0
         max_workers = pool.max_workers if pool.max_workers is not None else pool.min_workers
@@ -122,7 +122,7 @@ class SpecService:
         return min(requested, max_workers - current_workers)
 
     def _get_scaling_stats(self) -> Dict[str, Any]:
-        pool = self._spec.worker_pool
+        pool = self._spec_data.worker_pool
         if not pool:
             return {}
 
@@ -155,10 +155,10 @@ class SpecService:
                 await self._manage_workers()
             except Exception as exc:
                 logger.error("Error in poll_loop for %s: %s", self.name, exc)
-            await asyncio.sleep(self._spec.poll_interval_s)
+            await asyncio.sleep(self._spec_data.poll_interval_s)
 
     async def poll_state(self) -> None:
-        if self._spec.on_demand:
+        if self._spec_data.on_demand:
             await self._poll_items(self._active_tasks, TaskKind.NORMAL)
         await self._poll_items(self._worker_tasks, TaskKind.WORKER)
 
@@ -170,7 +170,7 @@ class SpecService:
             try:
                 task = self.get_task(task_id, kind)
                 old_state = task.state
-                new_state = await self._executor.runner.query_state(self._spec, task)
+                new_state = await self._executor.runner.query_state(self._spec_data, task)
                 if new_state != old_state:
                     task.set_state(new_state)
                     task.touch()
@@ -252,7 +252,7 @@ class SpecService:
         )
 
         if task_input.submit:
-            if self._spec.worker_pool and kind == TaskKind.NORMAL:
+            if self._spec_data.worker_pool and kind == TaskKind.NORMAL:
                 logger.info("Submitting %s for spec %s to worker queue", task, self.name)
                 self._task_done_events[task_id] = asyncio.Event()
                 await self.submit_to_queue(task_id)
@@ -265,7 +265,7 @@ class SpecService:
                             "__TASK_QUEUE_URL": f"{self._public_url}/specs/{self.name}/queue/",
                             "__TASK_QUEUE_TOKEN": self.get_queue_token(),
                         }
-                    await self._executor.runner.submit(self._spec, task, env=env)
+                    await self._executor.runner.submit(self._spec_data, task, env=env)
                     if not task.is_terminated():
                         if kind == TaskKind.WORKER:
                             self._worker_tasks.add(task_id)
@@ -408,7 +408,7 @@ class SpecService:
     def _new_task(self, task_data: TaskData, kind: TaskKind) -> Task:
         task = Task(
             task_data,
-            self._spec,
+            self._spec_data,
             kind,
             spec_dir=self.dir,
         )
@@ -424,7 +424,7 @@ class SpecService:
         if not os.path.exists(base_dir):
             return
 
-        pattern = os.path.join(base_dir, "??", "*", self._spec.meta_dir, "active")
+        pattern = os.path.join(base_dir, "??", "*", self._spec_data.meta_dir, "active")
         for active_file_path in glob.glob(pattern):
             if not os.path.isfile(active_file_path):
                 continue
@@ -442,7 +442,7 @@ class SpecService:
                 logger.warning("Failed to load %s %s: %s", sub_dir, task_id, exc)
 
     def _get_task_data_file(self, task_id: str, kind: TaskKind = TaskKind.NORMAL) -> str:
-        return os.path.join(self._get_task_dir(task_id, kind), self._spec.meta_dir, "task.json")
+        return os.path.join(self._get_task_dir(task_id, kind), self._spec_data.meta_dir, "task.json")
 
     def _get_task_dir(self, task_id: str, kind: TaskKind = TaskKind.NORMAL) -> str:
         assert len(task_id) > 2, "task_id should >2"

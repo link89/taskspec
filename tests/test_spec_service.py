@@ -57,8 +57,8 @@ class TestSpecService(unittest.IsolatedAsyncioTestCase):
             connector = DummyConnector(temp_dir)
             service = SpecService(
                 name="demo",
-                dir=temp_dir,
-                spec=spec,
+                spec_dir=temp_dir,
+                spec_data=spec,
                 executor=DummyExecutor(connector),
                 public_url="http://127.0.0.1:8000",
             )
