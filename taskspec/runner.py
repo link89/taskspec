@@ -24,7 +24,7 @@ class RunnerConfig(BaseModel):
 
 
 class Runner:
-    async def submit(self, spec: SpecData, task: Task) -> Task:
+    async def submit(self, spec: SpecData, task: Task, env: Optional[dict[str, str]] = None) -> Task:
         raise NotImplementedError
 
     async def query_state(self, spec: SpecData, task: Task) -> TaskState:
@@ -92,12 +92,11 @@ class SlurmRunner(Runner):
         else:
             logger.error(f"Failed to run squeue: {result.stderr}")
 
-    async def submit(self, spec: SpecData, task: Task):
+    async def submit(self, spec: SpecData, task: Task, env: Optional[dict[str, str]] = None):
         base_dir = self._connector.get_base_dir()
         task_dir = os.path.join(base_dir, task.get_prefix())
         entrypoint = task.get_entrypoint()
 
-        env = task.get_remote_env()
         env_str = ""
         if env:
             env_str = " ".join([f"{k}={quote(v)}" for k, v in env.items()])

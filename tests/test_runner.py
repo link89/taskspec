@@ -29,11 +29,6 @@ class TestSlurmRunner(unittest.IsolatedAsyncioTestCase):
             spec,
             TaskKind.NORMAL,
             spec_dir="/local",
-            public_url="http://127.0.0.1:8000",
-            queue_token_provider=lambda: "token",
-            save_task_data=lambda task: None,
-            save_task_input=lambda task, task_input: None,
-            load_task_input=lambda task: None,
         )
 
     async def test_submit_registers_job_in_squeue_cache(self):

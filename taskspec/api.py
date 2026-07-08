@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import FastAPI, APIRouter, Depends, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
-from .schema import TaskInput, task_state_to_name, task_name_to_state
+from .schema import TaskInput, TaskKind, task_state_to_name, task_name_to_state
 from .service import RootService
 from .service.auth import AuthService
 
@@ -13,20 +13,20 @@ class Controller:
 
     async def get_task(self, spec_name: str, task_id: str, wait: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)
-        return (await spec_service.get_task_async(task_id, wait=wait)).task_data
+        return (await spec_service.get_task_async(task_id, TaskKind.NORMAL, wait=wait)).task_data
 
     async def get_task_input(self, spec_name: str, task_id: str):
         spec_service = self._root_service.get_spec_service(spec_name)
-        return spec_service.get_task_input(task_id)
+        return spec_service.get_task_input(task_id, TaskKind.NORMAL)
 
     async def create_task(self, spec_name: str, task_input: TaskInput):
         spec_service = self._root_service.get_spec_service(spec_name)
-        return (await spec_service.create_task(task_input)).task_data
+        return (await spec_service.create_task(task_input, TaskKind.NORMAL)).task_data
 
     async def get_task_file(self, spec_name: str, task_id: str, file_path: str, offset: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)
         try:
-            fstream = await spec_service.get_task_file(task_id, file_path, offset=offset)
+            fstream = await spec_service.get_task_file(task_id, file_path, TaskKind.NORMAL, offset=offset)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         return StreamingResponse(fstream)

@@ -205,7 +205,7 @@ class SpecService:
                     exc,
                 )
 
-    async def create_task(self, task_input: TaskInput, kind: TaskKind = TaskKind.NORMAL) -> Task:
+    async def create_task(self, task_input: TaskInput, kind: TaskKind) -> Task:
         task_id = gen_task_id(task_input.idempotent_key)
         task = self._new_task(
             TaskData(
@@ -264,7 +264,13 @@ class SpecService:
             else:
                 try:
                     logger.info("Submitting %s %s for spec %s via runner", task_type, task_id, self.name)
-                    await self._executor.runner.submit(self._spec, task)
+                    env = None
+                    if kind == TaskKind.WORKER:
+                        env = {
+                            "__TASK_QUEUE_URL": f"{self._public_url}/specs/{self.name}/queue/",
+                            "__TASK_QUEUE_TOKEN": self.get_queue_token(),
+                        }
+                    await self._executor.runner.submit(self._spec, task, env=env)
                     if not TaskState.is_terminated(task.state):
                         if kind == TaskKind.WORKER:
                             self._worker_tasks.add(task_id)
@@ -368,7 +374,7 @@ class SpecService:
         except asyncio.TimeoutError:
             pass
 
-    def get_task(self, task_id: str, kind: TaskKind = TaskKind.NORMAL) -> Task:
+    def get_task(self, task_id: str, kind: TaskKind) -> Task:
         key = (task_id, TaskKind(kind))
         task = self._tasks.get(key)
         if task is not None:
@@ -384,21 +390,21 @@ class SpecService:
     async def get_task_async(
         self,
         task_id: str,
-        kind: TaskKind = TaskKind.NORMAL,
+        kind: TaskKind,
         wait: float = 0,
     ) -> Task:
         if wait > 0 and kind == TaskKind.NORMAL:
             await self.wait_for_terminated(task_id, wait_s=wait)
         return self.get_task(task_id, kind)
 
-    def get_task_input(self, task_id: str, kind: TaskKind = TaskKind.NORMAL) -> TaskInput:
+    def get_task_input(self, task_id: str, kind: TaskKind) -> TaskInput:
         return self.get_task(task_id, kind).get_input()
 
     async def get_task_file(
         self,
         task_id: str,
         file_path: str,
-        kind: TaskKind = TaskKind.NORMAL,
+        kind: TaskKind,
         offset: int = 0,
     ) -> AsyncGenerator[bytes, Any]:
         task = self.get_task(task_id, kind)
@@ -415,33 +421,9 @@ class SpecService:
             self._spec,
             kind,
             spec_dir=self.dir,
-            public_url=self._public_url,
-            queue_token_provider=self.get_queue_token,
-            save_task_data=self._save_task,
-            save_task_input=self._save_task_input,
-            load_task_input=self._load_task_input,
         )
         self._tasks[(task.id, TaskKind(kind))] = task
         return task
-
-    def _save_task(self, task: Task) -> None:
-        task_data_file = task.get_data_file()
-        os.makedirs(os.path.dirname(task_data_file), exist_ok=True)
-        with open(task_data_file, "w", encoding="utf-8") as handle:
-            json.dump(task.task_data.model_dump(), handle)
-
-    def _save_task_input(self, task: Task, task_input: TaskInput) -> None:
-        task_input_file = task.get_input_file()
-        os.makedirs(os.path.dirname(task_input_file), exist_ok=True)
-        with open(task_input_file, "w", encoding="utf-8") as handle:
-            json.dump(task_input.model_dump(), handle)
-
-    def _load_task_input(self, task: Task) -> TaskInput:
-        task_input_file = task.get_input_file()
-        if not os.path.exists(task_input_file):
-            raise FileNotFoundError(f"Task input file not found: {task_input_file}")
-        with open(task_input_file, "r", encoding="utf-8") as handle:
-            return TaskInput(**json.load(handle))
 
     def _load_active_tasks(self) -> None:
         self._scan_active_items("tasks", self._active_tasks, TaskKind.NORMAL)

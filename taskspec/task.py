@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 from .schema import InFile, SpecData, TaskData, TaskInput, TaskKind, TaskState
 from .util import fdel, fset
@@ -15,21 +15,11 @@ class Task:
         kind: TaskKind,
         *,
         spec_dir: str,
-        public_url: str,
-        queue_token_provider: Callable[[], str],
-        save_task_data: Callable[["Task"], None],
-        save_task_input: Callable[["Task", TaskInput], None],
-        load_task_input: Callable[["Task"], TaskInput],
     ):
         self.task_data = task_data
         self.spec_data = spec_data
         self.kind = TaskKind(kind)
         self._spec_dir = spec_dir
-        self._public_url = public_url
-        self._queue_token_provider = queue_token_provider
-        self._save_task_data = save_task_data
-        self._save_task_input = save_task_input
-        self._load_task_input = load_task_input
 
     @property
     def id(self) -> str:
@@ -97,14 +87,6 @@ class Task:
             return self.spec_data.worker_pool.entrypoint
         raise ValueError("Spec must have either on_demand or worker_pool")
 
-    def get_remote_env(self) -> Optional[dict[str, str]]:
-        if self.kind != TaskKind.WORKER:
-            return None
-        return {
-            "__TASK_QUEUE_URL": f"{self._public_url}/specs/{self.spec_data.name}/queue/",
-            "__TASK_QUEUE_TOKEN": self._queue_token_provider(),
-        }
-
     def activate(self) -> None:
         fset(self.get_active_file())
 
@@ -118,10 +100,17 @@ class Task:
         fset(self.get_qstate_file(), "dequeue")
 
     def get_input(self) -> TaskInput:
-        return self._load_task_input(self)
+        task_input_file = self.get_input_file()
+        if not os.path.exists(task_input_file):
+            raise FileNotFoundError(f"Task input file not found: {task_input_file}")
+        with open(task_input_file, "r", encoding="utf-8") as handle:
+            return TaskInput(**json.load(handle))
 
     def save_input(self, task_input: TaskInput) -> None:
-        self._save_task_input(self, task_input)
+        task_input_file = self.get_input_file()
+        os.makedirs(os.path.dirname(task_input_file), exist_ok=True)
+        with open(task_input_file, "w", encoding="utf-8") as handle:
+            json.dump(task_input.model_dump(), handle)
 
     def set_state(self, state: TaskState) -> None:
         self.task_data.state = state
@@ -133,7 +122,10 @@ class Task:
         self.task_data.updated_at = int(time.time()) if updated_at is None else updated_at
 
     def save(self) -> None:
-        self._save_task_data(self)
+        task_data_file = self.get_data_file()
+        os.makedirs(os.path.dirname(task_data_file), exist_ok=True)
+        with open(task_data_file, "w", encoding="utf-8") as handle:
+            json.dump(self.task_data.model_dump(), handle)
 
     def to_json(self) -> str:
         return json.dumps(self.task_data.model_dump())
