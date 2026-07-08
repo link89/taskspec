@@ -118,6 +118,9 @@ class Task:
     def set_slurm_job(self, slurm_job) -> None:
         self.task_data.slurm_job = slurm_job
 
+    def is_terminated(self) -> bool:
+        return TaskState.is_terminated(self.state)
+
     def touch(self, updated_at: Optional[int] = None) -> None:
         self.task_data.updated_at = int(time.time()) if updated_at is None else updated_at
 

@@ -183,7 +183,7 @@ class SpecService:
                         new_state.name,
                     )
 
-                if TaskState.is_terminated(new_state):
+                if task.is_terminated():
                     target_set.remove(task_id)
                     task.deactivate()
                     logger.info(
@@ -266,7 +266,7 @@ class SpecService:
                             "__TASK_QUEUE_TOKEN": self.get_queue_token(),
                         }
                     await self._executor.runner.submit(self._spec, task, env=env)
-                    if not TaskState.is_terminated(task.state):
+                    if not task.is_terminated():
                         if kind == TaskKind.WORKER:
                             self._worker_tasks.add(task_id)
                         else:
@@ -353,7 +353,7 @@ class SpecService:
 
     async def wait_for_terminated(self, task_id: str, wait_s: float) -> None:
         task = self.get_task(task_id, TaskKind.NORMAL)
-        if TaskState.is_terminated(task.state):
+        if task.is_terminated():
             return
 
         event = self._task_done_events.get(task_id)
@@ -432,7 +432,7 @@ class SpecService:
             task_id = parts[-4] + parts[-3]
             try:
                 task = self.get_task(task_id, kind)
-                if not TaskState.is_terminated(task.state):
+                if not task.is_terminated():
                     target_set.add(task_id)
                     if kind == TaskKind.NORMAL:
                         self._task_done_events[task_id] = asyncio.Event()
