@@ -23,13 +23,52 @@ class Controller:
         spec_service = self._root_service.get_spec_service(spec_name)
         return (await spec_service.create_task(task_input, TaskKind.NORMAL)).task_data
 
-    async def get_task_file(self, spec_name: str, task_id: str, file_path: str, offset: int = 0):
+    async def get_task_file(self, spec_name: str, task_id: str, file_path: str,
+                            offset: int = 0,
+                            range_header: Optional[str] = Header(None, alias="Range")):
         spec_service = self._root_service.get_spec_service(spec_name)
+        if offset != 0 and range_header is not None:
+            raise HTTPException(status_code=400, detail="offset and Range cannot be used together")
         try:
-            fstream = await spec_service.get_task_file(task_id, file_path, TaskKind.NORMAL, offset=offset)
+            start, end = max(0, offset), None
+            partial = range_header is not None
+            if partial:
+                if not range_header.startswith("bytes=") or "," in range_header:
+                    raise HTTPException(status_code=416)
+                value = range_header[6:]
+                first, sep, last = value.partition("-")
+                if not sep:
+                    raise HTTPException(status_code=416)
+                try:
+                    if not first:
+                        raise ValueError
+                    start = int(first)
+                    end = int(last) if last else None
+                    if start < 0 or (end is not None and end < start):
+                        raise ValueError
+                except ValueError as exc:
+                    raise HTTPException(status_code=416) from exc
+            fstream = await spec_service.get_task_file(task_id, file_path, TaskKind.NORMAL, offset=start)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        return StreamingResponse(fstream)
+        async def bounded_stream():
+            remaining = end - start + 1 if end is not None else None
+            async for chunk in fstream:
+                if remaining is not None:
+                    chunk = chunk[:remaining]
+                if chunk:
+                    yield chunk
+                    if remaining is not None:
+                        remaining -= len(chunk)
+                if remaining == 0:
+                    break
+        headers = {"Accept-Ranges": "bytes"}
+        if end is not None:
+            headers["Content-Length"] = str(end - start + 1)
+        if partial:
+            range_end = end if end is not None else "*"
+            headers["Content-Range"] = f"bytes {start}-{range_end}/*"
+        return StreamingResponse(bounded_stream(), status_code=206 if partial else 200, headers=headers)
 
     async def get_from_queue(self, spec_name: str, wait: int = 30):
         spec_service = self._root_service.get_spec_service(spec_name)
