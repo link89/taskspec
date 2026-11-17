@@ -1,5 +1,10 @@
 # Change Log
 
+## v0.0.10.dev0
+- introduce a Run protocol for runner execution targets
+- separate Worker from Task while preserving existing metadata and HTTP APIs
+- add regression tests for execution roles and legacy record compatibility
+
 ## v0.0.9
 - don't polling worker pool tasks
 
