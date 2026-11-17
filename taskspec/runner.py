@@ -7,8 +7,8 @@ import re
 import os
 
 from .connector import Connector
-from .schema import SlurmJobData, SpecData, TaskState
-from .task import Task
+from .schema import SlurmJobData, TaskState
+from .run import Run
 
 
 logger = getLogger(__name__)
@@ -24,10 +24,10 @@ class RunnerConfig(BaseModel):
 
 
 class Runner:
-    async def submit(self, spec: SpecData, task: Task, env: Optional[dict[str, str]] = None) -> Task:
+    async def submit(self, run: Run, env: Optional[dict[str, str]] = None) -> Run:
         raise NotImplementedError
 
-    async def query_state(self, spec: SpecData, task: Task) -> TaskState:
+    async def query_state(self, run: Run) -> TaskState:
         raise NotImplementedError
 
 
@@ -92,16 +92,16 @@ class SlurmRunner(Runner):
         else:
             logger.error(f"Failed to run squeue: {result.stderr}")
 
-    async def submit(self, spec: SpecData, task: Task, env: Optional[dict[str, str]] = None):
+    async def submit(self, run: Run, env: Optional[dict[str, str]] = None) -> Run:
         base_dir = self._connector.get_base_dir()
-        task_dir = os.path.join(base_dir, task.get_prefix())
-        entrypoint = task.get_entrypoint()
+        run_dir = os.path.join(base_dir, run.get_prefix())
+        entrypoint = run.get_entrypoint()
 
         env_str = ""
         if env:
             env_str = " ".join([f"{k}={quote(v)}" for k, v in env.items()])
 
-        cmd = f"cd {task_dir} && {env_str} {entrypoint}"
+        cmd = f"cd {run_dir} && {env_str} {entrypoint}"
         result = await self._connector.shell(cmd)
         if result.returncode != 0:
             raise ValueError(f"Failed to submit job: {result.stderr}")
@@ -112,25 +112,24 @@ class SlurmRunner(Runner):
 
         logger.info(f'Job submitted: {job_id}')
         self._squeue_data[job_id] = 'PENDING'
-        task.set_slurm_job(SlurmJobData(id=job_id, state='PENDING'))
-        task.set_state(TaskState.SUBMITTED)
-        return task
+        run.set_slurm_job(SlurmJobData(id=job_id, state='PENDING'))
+        run.set_state(TaskState.SUBMITTED)
+        return run
 
-    async def query_state(self, spec: SpecData, task: Task) -> TaskState:
-        if not task.slurm_job:
-            raise ValueError("Task has no associated Slurm job")
+    async def query_state(self, run: Run) -> TaskState:
+        if not run.slurm_job:
+            raise ValueError("Run has no associated Slurm job")
 
         await self._update_squeue()
-        job_id = task.slurm_job.id
+        job_id = run.slurm_job.id
 
         if job_id in self._squeue_data:
-            task.slurm_job.state = self._squeue_data[job_id]
+            run.slurm_job.state = self._squeue_data[job_id]
             return TaskState.SUBMITTED
 
         # Job not in squeue, check state_file
         base_dir = self._connector.get_base_dir()
-        task_dir = os.path.join(base_dir, task.get_prefix())
-        state_path = os.path.join(task_dir, spec.state_file)
+        state_path = os.path.join(base_dir, run.get_state_file())
 
         # Try to read state_file using connector.load_text
         try:

@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from taskspec.schema import SpecData, TaskData, TaskKind, TaskState
+from taskspec.schema import SpecData, TaskData, TaskState
 from taskspec.service.spec import SpecService
 
 
@@ -77,7 +77,7 @@ class TestSpecService(unittest.IsolatedAsyncioTestCase):
                     handle,
                 )
 
-            stream = await service.get_task_file(task_id, "output.txt", TaskKind.NORMAL, offset=7)
+            stream = await service.get_task_file(task_id, "output.txt", offset=7)
             chunks = [chunk async for chunk in stream]
 
             self.assertEqual(chunks, [b"payload"])

@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import FastAPI, APIRouter, Depends, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
-from .schema import TaskInput, TaskKind, task_state_to_name, task_name_to_state
+from .schema import TaskInput, task_state_to_name, task_name_to_state
 from .service import RootService
 from .service.auth import AuthService
 
@@ -13,18 +13,18 @@ class Controller:
 
     async def get_task(self, spec_name: str, task_id: str, wait: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)
-        task = await spec_service.get_task_async(task_id, TaskKind.NORMAL, wait=wait)
+        task = await spec_service.get_task_async(task_id, wait=wait)
         task_data = task.task_data.model_dump()
-        task_data["full_task_dir"] = await spec_service.get_task_full_dir(task_id, TaskKind.NORMAL)
+        task_data["full_task_dir"] = await spec_service.get_task_full_dir(task_id)
         return task_data
 
     async def get_task_input(self, spec_name: str, task_id: str):
         spec_service = self._root_service.get_spec_service(spec_name)
-        return spec_service.get_task_input(task_id, TaskKind.NORMAL)
+        return spec_service.get_task_input(task_id)
 
     async def create_task(self, spec_name: str, task_input: TaskInput):
         spec_service = self._root_service.get_spec_service(spec_name)
-        return (await spec_service.create_task(task_input, TaskKind.NORMAL)).task_data
+        return (await spec_service.create_task(task_input)).task_data
 
     async def get_task_file(self, spec_name: str, task_id: str, file_path: str,
                             offset: int = 0,
@@ -51,7 +51,7 @@ class Controller:
                         raise ValueError
                 except ValueError as exc:
                     raise HTTPException(status_code=416) from exc
-            fstream = await spec_service.get_task_file(task_id, file_path, TaskKind.NORMAL, offset=start)
+            fstream = await spec_service.get_task_file(task_id, file_path, offset=start)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         async def bounded_stream():

@@ -14,7 +14,7 @@ class DummyRootService:
 
 
 class DummySpecService:
-    async def get_task_file(self, task_id: str, file_path: str, kind, offset: int = 0):
+    async def get_task_file(self, task_id: str, file_path: str, offset: int = 0):
         raise FileNotFoundError(f"File not found: {file_path}")
 
 

@@ -111,11 +111,6 @@ task_state_to_name = {state.value: state.name for state in TaskState}
 task_name_to_state = {name: state for state, name in task_state_to_name.items()}
 
 
-class TaskKind(IntEnum):
-    NORMAL = 0
-    WORKER = 1
-
-
 class TaskInput(BaseModel):
     idempotent_key: str = ''
     files: List[FileData] = []
