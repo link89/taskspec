@@ -390,6 +390,11 @@ class SpecService:
     def get_task_input(self, task_id: str, kind: TaskKind) -> TaskInput:
         return self.get_task(task_id, kind).get_input()
 
+    async def get_task_full_dir(self, task_id: str, kind: TaskKind) -> str:
+        task = self.get_task(task_id, kind)
+        remote_task_dir = os.path.join(self._executor.connector.get_base_dir(), task.get_prefix())
+        return await self._executor.connector.get_abs_path(remote_task_dir)
+
     async def get_task_file(
         self,
         task_id: str,

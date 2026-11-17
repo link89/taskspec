@@ -13,7 +13,10 @@ class Controller:
 
     async def get_task(self, spec_name: str, task_id: str, wait: int = 0):
         spec_service = self._root_service.get_spec_service(spec_name)
-        return (await spec_service.get_task_async(task_id, TaskKind.NORMAL, wait=wait)).task_data
+        task = await spec_service.get_task_async(task_id, TaskKind.NORMAL, wait=wait)
+        task_data = task.task_data.model_dump()
+        task_data["full_task_dir"] = await spec_service.get_task_full_dir(task_id, TaskKind.NORMAL)
+        return task_data
 
     async def get_task_input(self, spec_name: str, task_id: str):
         spec_service = self._root_service.get_spec_service(spec_name)
