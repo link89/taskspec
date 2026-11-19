@@ -1,5 +1,5 @@
 import os
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List, Union
 from enum import IntEnum
 
@@ -123,3 +123,4 @@ class TaskData(BaseModel):
     created_at: int
     updated_at: int
     slurm_job: Optional[SlurmJobData] = None
+    full_task_dir: str = Field(default="", description="Absolute task directory on the executor.")

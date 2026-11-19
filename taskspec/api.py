@@ -1,7 +1,7 @@
 from typing import Optional
 from fastapi import FastAPI, APIRouter, Depends, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
-from .schema import TaskInput, task_state_to_name, task_name_to_state
+from .schema import TaskData, TaskInput, task_state_to_name, task_name_to_state
 from .service import RootService
 from .service.auth import AuthService
 
@@ -11,12 +11,12 @@ class Controller:
     def __init__(self, root_service: RootService):
         self._root_service = root_service
 
-    async def get_task(self, spec_name: str, task_id: str, wait: int = 0):
+    async def get_task(self, spec_name: str, task_id: str, wait: int = 0) -> TaskData:
         spec_service = self._root_service.get_spec_service(spec_name)
         task = await spec_service.get_task_async(task_id, wait=wait)
-        task_data = task.task_data.model_dump()
-        task_data["full_task_dir"] = await spec_service.get_task_full_dir(task_id)
-        return task_data
+        return task.task_data.model_copy(update={
+            "full_task_dir": await spec_service.get_task_full_dir(task_id),
+        })
 
     async def get_task_input(self, spec_name: str, task_id: str):
         spec_service = self._root_service.get_spec_service(spec_name)

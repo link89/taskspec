@@ -152,9 +152,10 @@ class TestRunRoles(unittest.IsolatedAsyncioTestCase):
             self.assertIn(task.id, service._task_done_events)
             for record in (task, worker):
                 self.assertEqual(record.get_input().idempotent_key, "old")
+                self.assertEqual(record.data.full_task_dir, "")
                 record.save()
                 self.assertEqual(json.loads(Path(record.get_data_file()).read_text()),
-                                 records[record.subdir])
+                                 {**records[record.subdir], "full_task_dir": ""})
             await service.poll_state()
             self.assertEqual(runner.queries, [task, worker])
             self.assertFalse(service._active_tasks | service._active_workers)
